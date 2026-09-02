@@ -1,0 +1,16 @@
+# Normalise to LF in the repository, check out native line endings.
+* text=auto
+
+# Windows-only tooling that some hosts require CRLF for
+*.ps1   text eol=crlf
+*.cmd   text eol=crlf
+*.sln   text eol=crlf
+
+*.cs    text diff=csharp
+*.js    text
+*.json  text
+*.md    text
+*.xaml  text
+*.xml   text
+
+*.png   binary

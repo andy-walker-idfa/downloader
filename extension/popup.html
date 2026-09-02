@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Downloader</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #ffffff;
+        --fg: #1f2328;
+        --muted: #6b7280;
+        --line: #e5e7eb;
+        --accent: #1a73e8;
+        --ok: #137333;
+        --warn: #b06000;
+        --err: #c5221f;
+        --chip: #f3f4f6;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #1f1f21;
+          --fg: #e8eaed;
+          --muted: #9aa0a6;
+          --line: #3c4043;
+          --chip: #2d2e31;
+          --ok: #81c995;
+          --warn: #fdd663;
+          --err: #f28b82;
+        }
+      }
+      * { box-sizing: border-box; }
+      body {
+        font: 13px/1.45 "Segoe UI", system-ui, sans-serif;
+        width: 380px;
+        margin: 0;
+        padding: 12px;
+        background: var(--bg);
+        color: var(--fg);
+      }
+      header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+      h1 { font-size: 14px; margin: 0; }
+      #conn { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--chip); color: var(--muted); }
+      #conn.up { color: var(--ok); }
+      #conn.down { color: var(--err); }
+      .url { font-size: 11px; color: var(--muted); word-break: break-all; margin-bottom: 8px; }
+      .row { display: flex; gap: 6px; margin-bottom: 10px; }
+      button {
+        flex: 1;
+        padding: 7px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--chip);
+        color: var(--fg);
+        cursor: pointer;
+        font-weight: 600;
+        font-size: 12px;
+      }
+      button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+      button:hover { filter: brightness(1.08); }
+      .toggle {
+        display: flex;
+        gap: 8px;
+        align-items: flex-start;
+        padding: 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        cursor: pointer;
+        margin-bottom: 6px;
+      }
+      .toggle input { margin: 2px 0 0; flex: none; cursor: pointer; }
+      .toggle b { display: block; font-size: 12px; font-weight: 600; }
+      .toggle em { display: block; font-style: normal; font-size: 11px; color: var(--muted); margin-top: 2px; }
+      h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 12px 0 6px; }
+      .section-head { display: flex; align-items: baseline; justify-content: space-between; }
+      button.link {
+        flex: none;
+        width: auto;
+        padding: 0;
+        border: none;
+        background: none;
+        color: var(--muted);
+        font-size: 11px;
+        font-weight: 500;
+      }
+      button.link:hover { color: var(--accent); }
+      .item { border-top: 1px solid var(--line); padding: 7px 0; }
+      .item .top { display: flex; justify-content: space-between; gap: 8px; }
+      .item .name { font-size: 12px; word-break: break-all; }
+      .item .meta { font-size: 11px; color: var(--muted); white-space: nowrap; }
+      .bar { height: 4px; background: var(--chip); border-radius: 3px; margin-top: 5px; overflow: hidden; }
+      .bar > i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .25s; }
+      .tag { font-size: 10px; padding: 1px 6px; border-radius: 4px; background: var(--chip); color: var(--muted); }
+      button.cancel { color: var(--err); }
+      button.cancel:disabled { color: var(--muted); cursor: default; filter: none; }
+      button.pause { flex: none; width: auto; color: var(--fg); }
+      .actions { display: flex; gap: 6px; margin-top: 6px; }
+      .actions button { flex: none; width: auto; padding: 3px 10px; font-size: 11px; font-weight: 500; }
+      .actions button.resume { background: var(--accent); border-color: var(--accent); color: #fff; }
+      .actions button.discard { color: var(--err); }
+      #log { max-height: 170px; overflow-y: auto; font-size: 11px; }
+      #log div { padding: 2px 0; border-top: 1px solid var(--line); word-break: break-word; }
+      .lvl-ok { color: var(--ok); }
+      .lvl-warn { color: var(--warn); }
+      .lvl-error { color: var(--err); }
+      .lvl-info { color: var(--muted); }
+      .empty { color: var(--muted); font-size: 11px; padding: 6px 0; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Downloader</h1>
+      <span id="conn">checking…</span>
+    </header>
+
+    <div class="url" id="tabUrl"></div>
+
+    <div class="row">
+      <button class="primary" id="download">Download this URL</button>
+    </div>
+
+    <label class="toggle" for="intercept">
+      <input type="checkbox" id="intercept" />
+      <span>
+        <b>Take over browser downloads</b>
+        <em>Click a site's own download button and we grab it. Needed for sites with no direct link.</em>
+      </span>
+    </label>
+
+    <h2>Unfinished — can be resumed</h2>
+    <div id="partials"></div>
+
+    <h2>Transfers</h2>
+    <div id="transfers"></div>
+
+    <div class="section-head">
+      <h2>Event log</h2>
+      <button id="clear" class="link">Clear</button>
+    </div>
+    <div id="log"></div>
+
+    <script src="popup.js"></script>
+  </body>
+</html>

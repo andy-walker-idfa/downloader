@@ -1,0 +1,23 @@
+# Build output
+bin/
+obj/
+**/bin/
+**/obj/
+[Dd]ebug/
+[Rr]elease/
+TestResults/
+*.user
+.vs/
+
+# Generated at install time: contains machine-specific absolute paths and the extension IDs
+# derived from this machine's folder layout. packaging/install.ps1 writes it.
+packaging/native_host.json
+
+# Host debug log, if anyone points --log-path at the repo
+*.log
+
+# Editors / OS
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

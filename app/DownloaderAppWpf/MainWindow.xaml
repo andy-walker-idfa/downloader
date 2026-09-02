@@ -1,0 +1,53 @@
+﻿<Window x:Class="DownloaderAppWpf.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:DownloaderAppWpf"
+        mc:Ignorable="d"
+        Title="Windows Downloader" Height="620" Width="960">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="Windows Downloader" FontSize="28" FontWeight="Bold" Margin="0,0,0,16"/>
+
+        <Grid Grid.Row="1" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBox x:Name="UrlTextBox" Grid.Column="0" Margin="0,0,10,0" FontSize="14" VerticalContentAlignment="Center" Height="36" ToolTip="https://..."/>
+            <Button Grid.Column="1" Content="Add" Width="90" Height="36" Click="AddDownload_Click" Margin="0,0,10,0"/>
+            <Button Grid.Column="2" Content="Choose Folder" Width="120" Height="36" Click="ChooseFolder_Click"/>
+        </Grid>
+
+        <DataGrid x:Name="DownloadsGrid" Grid.Row="2" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" Margin="0,0,0,12">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="150"/>
+                <DataGridTextColumn Header="Progress" Binding="{Binding ProgressText}" Width="140"/>
+                <DataGridTextColumn Header="Offset" Binding="{Binding OffsetText}" Width="120"/>
+                <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="120"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <ProgressBar x:Name="OverallProgress" Grid.Column="0" Height="24" Minimum="0" Maximum="100" Value="0" Margin="0,0,10,0"/>
+            <Button Grid.Column="1" Content="Pause" Width="90" Margin="0,0,10,0" Click="Pause_Click"/>
+            <Button Grid.Column="2" Content="Resume" Width="90" Click="Resume_Click"/>
+        </Grid>
+    </Grid>
+</Window>

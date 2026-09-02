@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    # Windows-only by design: the host is a Windows native-messaging target and the app is WPF.
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore Downloader.sln
+
+      - name: Build
+        run: dotnet build Downloader.sln --no-restore -c Release
+
+      - name: Test
+        run: dotnet test native-host/DownloaderHost.Tests/DownloaderHost.Tests.csproj --no-build -c Release --verbosity normal
+
+  extension:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Syntax-check the extension
+        run: |
+          for f in extension/*.js; do node --check "$f"; done
+          node -e "JSON.parse(require('fs').readFileSync('extension/manifest.json','utf8'))"
+
+      - name: Check manifest declares what the code uses
+        run: |
+          node -e "
+            const fs = require('fs');
+            const m = JSON.parse(fs.readFileSync('extension/manifest.json','utf8'));
+            const src = ['background.js','content.js','popup.js']
+              .map(f => fs.readFileSync('extension/' + f,'utf8')).join('\n');
+            const needed = { contextMenus:'chrome.contextMenus', cookies:'chrome.cookies',
+                             downloads:'chrome.downloads', notifications:'chrome.notifications',
+                             storage:'chrome.storage', tabs:'chrome.tabs' };
+            const missing = Object.entries(needed)
+              .filter(([perm, api]) => src.includes(api) && !m.permissions.includes(perm))
+              .map(([perm]) => perm);
+            if (missing.length) { console.error('manifest is missing permissions:', missing); process.exit(1); }
+            console.log('manifest permissions cover the APIs in use');
+          "
