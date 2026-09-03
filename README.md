@@ -4,8 +4,9 @@ A download manager for Windows that detects whether a server actually supports r
 handles each source accordingly. It comes in three parts: a browser extension, a native
 messaging host that does the downloading, and a WPF desktop app.
 
-> **Status: working prototype.** The browser-to-host pipeline is complete and tested end to end.
-> The desktop app and MSIX/Store packaging are early. See [ROADMAP.md](ROADMAP.md).
+> **v1.0.0.** The browser extension and native host are complete, tested end to end, and what
+> the version number refers to. The desktop app and MSIX/Store packaging are still early — see
+> [ROADMAP.md](ROADMAP.md) for what is and isn't done.
 
 ## Why
 
@@ -119,6 +120,8 @@ The extension asks for broad permissions. Each one is load-bearing:
 
 Nothing is sent anywhere except the native host on your machine. There is no telemetry and no
 remote endpoint. The host logs to `%LOCALAPPDATA%\WindowsDownloader\host.log`.
+
+See [CHANGELOG.md](CHANGELOG.md) for what landed in each release.
 
 ## Repository layout
 

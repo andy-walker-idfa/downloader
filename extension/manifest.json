@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Downloader Bridge",
-  "version": "0.6.0",
+  "version": "1.0.0",
   "description": "Send links to the native Windows downloader",
   "permissions": ["contextMenus", "cookies", "downloads", "nativeMessaging", "notifications", "storage", "tabs"],
   "host_permissions": ["<all_urls>"],
