@@ -10,7 +10,7 @@ what works, what's missing, and what has to be true before a Store submission.
   after interrupt-and-resume
 - Pause / cancel / resume, with pause offered only where the server honours ranges
 - Browser takeover for sites with no direct link, forwarding cookies, referrer and user-agent
-- Chrome / Brave / Edge registration, with the extension ID derived from the folder path
+- Chrome / Brave / Edge registration, with a stable extension ID derived from a signing key
 - Unit tests and CI
 
 ## Desktop app
@@ -42,6 +42,11 @@ live progress in a grid. It is a shell, not a product.
 - [ ] Store listing: description, screenshots, privacy policy, age rating
 - [ ] Decide how the extension is distributed — the Chrome Web Store is a separate submission, and
       a Store-installed app cannot load an unpacked extension
+- [ ] Reconcile the extension ID with the Chrome Web Store. The signing key fixes the ID for
+      development and self-distribution, but CWS generates its own key for a new item and assigns
+      the ID from that. Confirm the exact behaviour at submission time; if the published ID
+      differs, take the CWS public key into `manifest.json` so development and production share
+      one ID, and add both to the host manifest's `allowed_origins` during the transition.
 
 ## Downloader engine
 

@@ -44,22 +44,41 @@ $HostName     = "com.downloader.host"
 
 function Write-Step($text) { Write-Host "`n=== $text" -ForegroundColor Cyan }
 
-# Chromium derives an unpacked extension's ID from the SHA-256 of its absolute directory path
-# (encoded UTF-16LE on Windows), taking the first 16 bytes and mapping each hex nibble to a-p.
-# Deriving it here removes the copy-the-ID-from-chrome://extensions step that previously let the
-# registered origin drift out of sync with the extension actually loaded.
-function Get-UnpackedExtensionId([string]$path) {
-    $full = (Get-Item -LiteralPath $path).FullName
-    $sha = [System.Security.Cryptography.SHA256]::Create().ComputeHash([System.Text.Encoding]::Unicode.GetBytes($full))
+# An extension's ID is the first 16 bytes of the SHA-256 of its public key, mapped to a-p.
+#
+# With a "key" in the manifest that is a real key, so the ID is the same wherever the extension
+# is installed -- which is what makes distribution possible at all. Without one, Chromium falls
+# back to hashing the extension's absolute directory path, so the ID changes with the install
+# location. That fallback is kept only for a checkout whose key has not been generated yet.
+function Get-IdFromBytes([byte[]]$bytes) {
+    $sha = [System.Security.Cryptography.SHA256]::Create().ComputeHash($bytes)
     $hex = ($sha[0..15] | ForEach-Object { $_.ToString('x2') }) -join ''
     ($hex.ToCharArray() | ForEach-Object { [char]([int][char]'a' + [Convert]::ToInt32($_, 16)) }) -join ''
+}
+
+function Get-ExtensionId([string]$path) {
+    $manifestFile = Join-Path $path "manifest.json"
+    if (Test-Path $manifestFile) {
+        $key = (Get-Content $manifestFile -Raw | ConvertFrom-Json).key
+        if ($key) {
+            return @{ Id = Get-IdFromBytes ([Convert]::FromBase64String($key)); Source = "manifest key" }
+        }
+    }
+
+    $full = (Get-Item -LiteralPath $path).FullName
+    return @{
+        Id     = Get-IdFromBytes ([System.Text.Encoding]::Unicode.GetBytes($full))
+        Source = "folder path (no signing key -- run new-signing-key.ps1)"
+    }
 }
 
 # --- Resolve the extension origins --------------------------------------------
 $ExtensionDir = Join-Path $RepoRoot "extension"
 if (-not (Test-Path $ExtensionDir)) { throw "Extension folder not found: $ExtensionDir" }
 
-$DerivedId = Get-UnpackedExtensionId $ExtensionDir
+$resolved  = Get-ExtensionId $ExtensionDir
+$DerivedId = $resolved.Id
+$IdSource  = $resolved.Source
 $ids = [System.Collections.Generic.List[string]]::new()
 $ids.Add($DerivedId)
 
@@ -141,7 +160,7 @@ if (Test-Path $LegacyManifestPath) {
 }
 Write-Host "  manifest: $ManifestPath" -ForegroundColor Gray
 foreach ($id in $ids) {
-    $note = if ($id -eq $DerivedId) { "  <- $ExtensionDir" } else { "" }
+    $note = if ($id -eq $DerivedId) { "  <- from $IdSource" } else { "" }
     Write-Host "  origin:   chrome-extension://$id/$note" -ForegroundColor Gray
 }
 

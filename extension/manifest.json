@@ -1,5 +1,6 @@
 {
   "manifest_version": 3,
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA7zYtVK2b6M5xMRv1B5t8kYrwOZW9qIBdejTzWXIonfDC29ZSH9XPO1enDUa8BLnDW7C7exXPmSxdWdTnke9mJjuUNvwWRUx/30E64Dmzsi7nt7V4ETaZjyShspOgFkffWgaYVA3uqgbEnRI4eOtvBcYXK1t1okmHqAeFBNHWh9n2EWjLBhC9n2te/wG7QjRjts/Ds7T6lBuVG+xb+djD3W8sRda+6iAXs2tGUZRlUU22fs+NMz3ZJZT+bWcDQyY7LMmPrdvFMKTtahT6bR0uaO+AmPK9HTT1BpC/yET+R7gIL+ZZhX4/Kg32baMK4KvtopMoT8JP1M1a+YjOf1pHhQIDAQAB",
   "name": "Downloader Bridge",
   "version": "1.0.0",
   "description": "Send links to the native Windows downloader",

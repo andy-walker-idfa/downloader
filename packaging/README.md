@@ -38,6 +38,29 @@ Two details that are easy to get wrong:
   silently ignored.
 - Brave's registry key is `BraveSoftware\Brave-Browser`, not `BraveSoftware\Brave`.
 
+## new-signing-key.ps1
+
+Generates the key pair that fixes the extension's ID.
+
+```powershell
+.
+ew-signing-key.ps1
+```
+
+An extension's ID is the first 16 bytes of the SHA-256 of its public key, mapped to `a`-`p`.
+The public half goes into `extension/manifest.json` as `key` and is committed; the private half
+is written to `%LOCALAPPDATA%\WindowsDownloader\extension-signing-key.pem`, owner-only, and must
+never be committed. `*.pem` is gitignored.
+
+**Back the private key up.** It is what proves a later update comes from you. Losing it means a
+new ID, which means a broken install for everyone who has it.
+
+Without a key, Chromium falls back to hashing the extension's absolute directory path, so the ID
+changes with the install location. That is fine for sideloading on one machine and impossible to
+distribute. `install.ps1` prefers the key and reports which source it used.
+
+Regenerating the key changes the ID, so the script refuses unless given `-Force`.
+
 ## test_host_e2e.ps1
 
 Drives the host exactly as a browser does — launched with the caller origin as `argv[0]`, stdin

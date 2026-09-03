@@ -53,6 +53,11 @@ choose **Load unpacked**, and select the `extension/` folder in this repo.
 Load it from the repo folder. An unpacked extension's ID is derived from its directory path, so a
 copy elsewhere gets a different ID and won't match the registered host.
 
+The extension's ID comes from the signing key in its manifest, so it is the same wherever you
+install it. On a fresh clone with no key yet, generate one first with
+`packaging
+ew-signing-key.ps1`.
+
 **2. Build and register the native host**
 
 ```powershell
@@ -60,7 +65,7 @@ cd packaging
 .\install.ps1
 ```
 
-No extension ID needed — the script derives it from the extension folder's path. It publishes the
+No extension ID needed — the script derives it from the signing key in the extension manifest. It publishes the
 host, writes the native messaging manifest to `%LOCALAPPDATA%\WindowsDownloader` (outside the
 repo, so a clean or a fresh clone can't break a working install), registers Chrome/Brave/Edge,
 removes stale

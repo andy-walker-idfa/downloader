@@ -22,3 +22,10 @@ packaging/native_host.json
 .idea/
 Thumbs.db
 Desktop.ini
+
+# Extension signing key. The ID is derived from its public half (committed in the manifest);
+# the private half proves updates come from you. Losing it means a new ID and a broken install
+# for every user, so back it up somewhere safe -- but never here.
+*.pem
+*.p12
+*.crx
