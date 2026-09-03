@@ -37,12 +37,17 @@ live progress in a grid. It is a shell, not a product.
       cannot see them. Registering at *runtime* from the full-trust app does work. Verified with a
       registered package: the app reported package identity, its `HKCU` writes were visible to an
       unpackaged process, and the host launched and answered a handshake.
-- [ ] **Confirm the host runs from `C:\Program Files\WindowsApps`.** The spike used
-      `Add-AppxPackage -Register` on a loose layout, so the host ran from a normal folder. A real
-      installed package puts it under `WindowsApps`, whose ACLs and version-stamped path are
-      untested. Two options: verify a signed `.msix` install, or sidestep it by copying the host
-      to `%LOCALAPPDATA%` on first run and registering that path - which also survives the path
-      changing on every package update.
+- [x] **Executing the host from `C:\Program Files\WindowsApps` - confirmed.** The folder is
+      owned by TrustedInstaller and its listing is restricted, but `BUILTIN\Users` holds
+      ReadAndExecute. Verified by launching a WindowsApps binary from an unpackaged process with
+      redirected stdio, which is exactly how a browser starts a native messaging host.
+- [ ] **Register a stable host path, not the package path.** A package's install folder carries
+      its version (`DownloaderPrototype_1.0.0.0_neutral__<hash>`), so every update moves the host
+      and deletes the old folder. Any manifest still pointing there gives
+      "Specified native messaging host not found" until the app is next opened and rewrites it -
+      a real break for users who reach for the browser before the app. Fix: copy the host to
+      `%LOCALAPPDATA%` on first run and register that. Worst case then becomes a slightly stale
+      host rather than a dead path.
 - [x] Ship `DownloaderHost.exe` beside the app in the package. `build-msix-layout.ps1` stages it
       there and `ResolveHostPath` finds it.
 - [ ] Build a signed `.msix` (makeappx + signtool, available via the
