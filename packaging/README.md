@@ -16,8 +16,12 @@ one, e.g. a packed build.
 
 What it writes:
 
-- `native_host.json` — the native messaging manifest. **Generated and gitignored**: it contains
-  absolute paths and machine-specific extension IDs.
+- `%LOCALAPPDATA%\WindowsDownloader\com.downloader.host.json` — the native messaging manifest.
+  It is written **outside the repo on purpose**: browsers store an absolute path to it in the
+  registry, so keeping it in the working tree meant a `git clean`, a fresh clone or any tidy-up
+  deleted it, and every registered browser then reported "Specified native messaging host not
+  found" with nothing visibly wrong. It also holds absolute paths and machine-specific extension
+  IDs, so it must never be committed.
 - `HKCU\Software\Google\Chrome\NativeMessagingHosts\com.downloader.host` and the Brave and Edge
   equivalents, each pointing at that manifest.
 

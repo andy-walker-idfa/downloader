@@ -60,7 +60,9 @@ cd packaging
 ```
 
 No extension ID needed — the script derives it from the extension folder's path. It publishes the
-host, writes the native messaging manifest, registers Chrome/Brave/Edge, removes stale
+host, writes the native messaging manifest to `%LOCALAPPDATA%\WindowsDownloader` (outside the
+repo, so a clean or a fresh clone can't break a working install), registers Chrome/Brave/Edge,
+removes stale
 registrations, reports which folder each browser is actually loading, and verifies the host
 answers a handshake.
 

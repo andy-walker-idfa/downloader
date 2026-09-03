@@ -108,7 +108,7 @@ means the process was killed outright.
 manifest. Re-run `install.ps1` and read what it reports.
 
 ```powershell
-Get-Content packaging\native_host.json
+Get-Content "$env:LOCALAPPDATA\WindowsDownloader\com.downloader.host.json"
 Get-ItemProperty "HKCU:\Software\Google\Chrome\NativeMessagingHosts\com.downloader.host"
 ```
 

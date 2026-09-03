@@ -9,8 +9,9 @@ TestResults/
 *.user
 .vs/
 
-# Generated at install time: contains machine-specific absolute paths and the extension IDs
-# derived from this machine's folder layout. packaging/install.ps1 writes it.
+# Older layouts generated the native messaging manifest here. install.ps1 now writes it to
+# %LOCALAPPDATA%\WindowsDownloader and deletes any leftover copy, but keep this so an
+# old working tree can never commit one.
 packaging/native_host.json
 
 # Host debug log, if anyone points --log-path at the repo
