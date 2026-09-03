@@ -13,11 +13,21 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<DownloadItem> _downloads = new();
     private readonly DownloaderService _downloaderService = new();
+
+    private string DescribeRegistration()
+    {
+        var r = App.Registration;
+        if (r is null) return "native host: registration not attempted";
+        if (r.Error is not null) return $"native host: FAILED - {r.Error}";
+        var where = r.Packaged ? "packaged" : "unpackaged";
+        return $"native host: registered for {string.Join(", ", r.Registered)} ({where})";
+    }
     private string _currentDownloadFolder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
 
     public MainWindow()
     {
         InitializeComponent();
+        Title += "  -  " + DescribeRegistration();
         DownloadsGrid.ItemsSource = _downloads;
     }
 

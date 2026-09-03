@@ -32,12 +32,21 @@ live progress in a grid. It is a shell, not a product.
 
 - [ ] **Identity.** `Name="DownloaderPrototype"` / `Publisher="CN=LocalDev"` are placeholders and
       must be replaced with the values Partner Center assigns.
-- [ ] **Native messaging registration from a packaged app.** The host is currently registered by
-      writing `HKCU\Software\<Browser>\NativeMessagingHosts`. An MSIX app cannot run
-      `install.ps1`; it must declare the registration in the manifest, and the manifest must point
-      at the host inside the package. This is the main unsolved packaging problem.
-- [ ] Ship `DownloaderHost.exe` beside the app in the package. `DownloaderService.ResolveHostPath`
-      already looks next to the executable first, so the layout is ready.
+- [x] **Native messaging registration from a packaged app - solved.** Declaring the keys in the
+      package does not work: MSIX virtualises the registry and browsers outside the container
+      cannot see them. Registering at *runtime* from the full-trust app does work. Verified with a
+      registered package: the app reported package identity, its `HKCU` writes were visible to an
+      unpackaged process, and the host launched and answered a handshake.
+- [ ] **Confirm the host runs from `C:\Program Files\WindowsApps`.** The spike used
+      `Add-AppxPackage -Register` on a loose layout, so the host ran from a normal folder. A real
+      installed package puts it under `WindowsApps`, whose ACLs and version-stamped path are
+      untested. Two options: verify a signed `.msix` install, or sidestep it by copying the host
+      to `%LOCALAPPDATA%` on first run and registering that path - which also survives the path
+      changing on every package update.
+- [x] Ship `DownloaderHost.exe` beside the app in the package. `build-msix-layout.ps1` stages it
+      there and `ResolveHostPath` finds it.
+- [ ] Build a signed `.msix` (makeappx + signtool, available via the
+      `Microsoft.Windows.SDK.BuildTools` NuGet package rather than a full SDK install)
 - [ ] Build the `.msix` in CI and sign it
 - [ ] Store listing: description, screenshots, privacy policy, age rating
 - [ ] Decide how the extension is distributed — the Chrome Web Store is a separate submission, and
@@ -63,6 +72,16 @@ live progress in a grid. It is a shell, not a product.
 - [ ] Optional per-site takeover rules instead of one global toggle
 - [ ] Firefox port — the protocol is the same, but the manifest and `allowed_extensions` spelling
       differ
+
+## Development notes
+
+- **MSIX cannot deploy from exFAT.** `Add-AppxPackage` fails with
+  `0x80073CFD ... cannot deploy to path layout of file system type exFAT`. If your working tree
+  is on an exFAT data drive, stage the package layout on an NTFS volume;
+  `build-msix-layout.ps1` defaults to `%LOCALAPPDATA%` and checks the filesystem first. The
+  same drive property also makes git report "detected dubious ownership".
+- Sideloading needs Developer Mode (or a trusted signing certificate), which requires one
+  elevated command.
 
 ## Known limitations that will not be fixed
 

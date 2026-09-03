@@ -29,3 +29,6 @@ Desktop.ini
 *.pem
 *.p12
 *.crx
+
+# MSIX staging output
+packaging/msix/
