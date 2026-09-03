@@ -41,15 +41,12 @@ live progress in a grid. It is a shell, not a product.
       owned by TrustedInstaller and its listing is restricted, but `BUILTIN\Users` holds
       ReadAndExecute. Verified by launching a WindowsApps binary from an unpackaged process with
       redirected stdio, which is exactly how a browser starts a native messaging host.
-- [ ] **Register a stable host path, not the package path.** A package's install folder carries
-      its version (`DownloaderPrototype_1.0.0.0_neutral__<hash>`), so every update moves the host
-      and deletes the old folder. Any manifest still pointing there gives
-      "Specified native messaging host not found" until the app is next opened and rewrites it -
-      a real break for users who reach for the browser before the app. Fix: copy the host to
-      `%LOCALAPPDATA%` on first run and register that. Worst case then becomes a slightly stale
-      host rather than a dead path.
-- [x] Ship `DownloaderHost.exe` beside the app in the package. `build-msix-layout.ps1` stages it
-      there and `ResolveHostPath` finds it.
+- [x] **Register a stable host path, not the package path - done.** A package installs to a
+      version-stamped folder, so every update relocates the host and deletes the old one. The
+      app now copies the host to `%LOCALAPPDATA%\WindowsDownloader\host` and registers that,
+      refreshing the copy only when the source build differs. Verified by updating a registered
+      package 1.0.0 -> 1.0.1 at a new path and deleting the old folder: the host still answered a
+      handshake before the updated app had even been launched.
 - [ ] Build a signed `.msix` (makeappx + signtool, available via the
       `Microsoft.Windows.SDK.BuildTools` NuGet package rather than a full SDK install)
 - [ ] Build the `.msix` in CI and sign it

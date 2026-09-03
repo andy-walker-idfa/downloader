@@ -60,18 +60,20 @@ dotnet publish (Join-Path $RepoRoot "app\DownloaderAppWpf\DownloaderAppWpf.cspro
     -c Release -o $LayoutDir --nologo | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "app publish failed" }
 
-Write-Step "Publishing the native host beside it"
-# Beside the app on purpose: ResolveHostPath checks its own directory first, so the packaged
-# app finds the host without any path configuration.
+Write-Step "Publishing the native host into host\"
+# Its own subfolder, so the app can copy the whole directory out of the package to a stable
+# path in one step -- which matters because a self-contained host is more than one file.
+# ResolveHostPath checks <app>\host\DownloaderHost.exe.
+$hostDir = Join-Path $LayoutDir "host"
 dotnet publish (Join-Path $RepoRoot "native-host\DownloaderHost\DownloaderHost.csproj") `
-    -c Release -o $LayoutDir --nologo | Out-Null
+    -c Release -o $hostDir --nologo | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "host publish failed" }
 
 Write-Step "Copying package assets and manifest"
 Copy-Item (Join-Path $PSScriptRoot "Assets") (Join-Path $LayoutDir "Assets") -Recurse -Force
 Copy-Item (Join-Path $PSScriptRoot "AppxManifest.xml") (Join-Path $LayoutDir "AppxManifest.xml") -Force
 
-foreach ($required in @("DownloaderAppWpf.exe", "DownloaderHost.exe", "AppxManifest.xml", "Assets\StoreLogo.png")) {
+foreach ($required in @("DownloaderAppWpf.exe", "host\DownloaderHost.exe", "AppxManifest.xml", "Assets\StoreLogo.png")) {
     $p = Join-Path $LayoutDir $required
     if (-not (Test-Path $p)) { throw "missing from layout: $required" }
 }

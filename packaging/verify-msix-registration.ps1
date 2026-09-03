@@ -73,8 +73,16 @@ if (-not $manifestPath -or -not (Test-Path $manifestPath)) {
 } else {
     $hostExe = (Get-Content $manifestPath -Raw | ConvertFrom-Json).path
     Write-Host "  host path: $hostExe" -ForegroundColor Gray
-    if ($hostExe -like "*WindowsApps*") { Pass "points inside the package" }
-    else { Write-Host "  NOTE  points outside the package: $hostExe" -ForegroundColor Yellow }
+    # The registered path must be the stable copy, NOT the package folder. A package's install
+    # path carries its version, so registering it directly breaks on every update.
+    $stable = Join-Path $env:LOCALAPPDATA "WindowsDownloader\host\DownloaderHost.exe"
+    if ($hostExe -eq $stable) {
+        Pass "registered the stable copy, so an app update cannot invalidate it"
+    } elseif ($hostExe -like "*WindowsApps*" -or $hostExe -like "*msix*") {
+        Fail "registered a package path; this breaks when the package version changes"
+    } else {
+        Write-Host "  NOTE  registered a dev-tree path (expected when running unpackaged): $hostExe" -ForegroundColor Yellow
+    }
 
     Step "Can that host be launched and answer a handshake, as the browser would?"
     if (-not (Test-Path $hostExe)) {
