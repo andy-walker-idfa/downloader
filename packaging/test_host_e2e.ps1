@@ -22,9 +22,10 @@
     Kill the host mid-download after N seconds to exercise crash recovery, then report what
     .part / .part.meta state was left behind.
 
-.PARAMETER Cancel
-    Send a graceful 'cancel' command after N seconds instead of killing the process, to verify
-    the host stops cleanly and leaves resumable state behind.
+.PARAMETER Pause
+    Send a 'pause' command after N seconds instead of killing the process, to verify the host
+    stops cleanly and leaves resumable state behind. ('cancel' is the other verb: it stops and
+    discards the partial data, so there is nothing left to resume.)
 
 .EXAMPLE
     .\test_host_e2e.ps1
@@ -37,7 +38,7 @@ param(
     [string]$ExtensionId = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     [switch]$PingOnly,
     [int]$Interrupt = 0,
-    [int]$Cancel = 0
+    [int]$Pause = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -132,8 +133,8 @@ try {
     Send-HostMessage @{ cmd = "download"; id = "dl-1"; url = $Url; path = $outPath }
 
     $deadline = if ($Interrupt -gt 0) { (Get-Date).AddSeconds($Interrupt) } else { [DateTime]::MaxValue }
-    $cancelAt = if ($Cancel -gt 0) { (Get-Date).AddSeconds($Cancel) } else { [DateTime]::MaxValue }
-    $cancelSent = $false
+    $pauseAt = if ($Pause -gt 0) { (Get-Date).AddSeconds($Pause) } else { [DateTime]::MaxValue }
+    $pauseSent = $false
     $lastPercent = -1
     $finished = $false
 
@@ -145,11 +146,11 @@ try {
             break
         }
 
-        if (-not $cancelSent -and (Get-Date) -gt $cancelAt) {
-            $cancelSent = $true
+        if (-not $pauseSent -and (Get-Date) -gt $pauseAt) {
+            $pauseSent = $true
             Write-Host ""
-            Write-Host "-> cancel dl-1 after $Cancel s" -ForegroundColor Yellow
-            Send-HostMessage @{ cmd = "cancel"; id = "c-1"; target = "dl-1" }
+            Write-Host "-> pause dl-1 after $Pause s" -ForegroundColor Yellow
+            Send-HostMessage @{ cmd = "pause"; id = "p-1"; target = "dl-1" }
         }
 
         $msg = Read-HostMessage
@@ -173,9 +174,14 @@ try {
                 Write-Host "<- finished  bytes=$($msg.bytes)  path=$($msg.path)" -ForegroundColor Green
                 $finished = $true
             }
+            "paused" {
+                Write-Progress -Activity "Downloading $fileName" -Completed
+                Write-Host "<- paused  stopped at $($msg.bytes) bytes  resumable=$($msg.resumable)" -ForegroundColor Yellow
+                $finished = $true
+            }
             "cancelled" {
                 Write-Progress -Activity "Downloading $fileName" -Completed
-                Write-Host "<- cancelled  stopped at $($msg.bytes) bytes  resumable=$($msg.resumable)" -ForegroundColor Yellow
+                Write-Host "<- cancelled  discarded $($msg.bytes) bytes" -ForegroundColor Yellow
                 $finished = $true
             }
             "error" {
@@ -202,8 +208,8 @@ try {
             Select-Object url, tier, bytesDownloaded, contentLength, etag | Format-List
     }
 
-    if ($Interrupt -gt 0 -or $Cancel -gt 0) {
-        Write-Host "Re-run this script with no -Interrupt/-Cancel to verify it resumes from the byte above." -ForegroundColor Yellow
+    if ($Interrupt -gt 0 -or $Pause -gt 0) {
+        Write-Host "Re-run this script with no -Interrupt/-Pause to verify it resumes from the byte above." -ForegroundColor Yellow
     } elseif (-not $finished) {
         Write-Host "FAIL: host closed the pipe before reporting 'finished'" -ForegroundColor Red
         $exitCode = 1

@@ -155,10 +155,11 @@ Resume it from the Unfinished list in the popup.`,
       );
       break;
     case "cancelled":
-      logEvent("warn", `Cancelled at ${formatBytes(msg.bytes)} — ${fileNameOf(msg.path)}`);
+      logEvent("warn", `Cancelled — discarded ${formatBytes(msg.bytes)} of ${fileNameOf(msg.path)}`);
       notify(
         "Download cancelled",
-        `${fileNameOf(msg.path)}\nStopped at ${formatBytes(msg.bytes)}.${msg.resumable ? " Download it again to resume from here." : ""}`,
+        `${fileNameOf(msg.path)}
+${formatBytes(msg.bytes)} discarded.`,
         "cancel"
       );
       break;

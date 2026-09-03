@@ -47,9 +47,14 @@ Replies, in order: `started`, then `progress` about twice a second, then one of 
 { "cmd": "pause", "id": "p1", "target": "7" }
 ```
 
-`target` names the download to stop. Both keep the `.part` and its `.meta`, so the transfer stays
-resumable; they differ only in the reply (`paused` vs `cancelled`) and therefore in what the UI
-tells the user. Stopping a download that is not running replies `error`.
+`target` names the download to stop. They differ in what happens to the partial data:
+
+- **`pause`** keeps `.part` and `.meta`, so the transfer stays resumable and appears in
+  `list_partials`. Replies `paused`.
+- **`cancel`** deletes both, abandoning the download. Replies `cancelled`, with `bytes` reporting
+  how much was discarded.
+
+Stopping a download that is not running replies `error`.
 
 ### `list_partials`
 

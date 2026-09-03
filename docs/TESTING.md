@@ -14,12 +14,12 @@ cd packaging
 
 .\test_host_e2e.ps1 -PingOnly          # handshake only
 .\test_host_e2e.ps1                     # full download with live progress
-.\test_host_e2e.ps1 -Cancel 6           # graceful pause after 6s
+.\test_host_e2e.ps1 -Pause 6           # graceful pause after 6s (partial kept)
 .\test_host_e2e.ps1 -Interrupt 6        # kill the process mid-stream (crash simulation)
 .\test-probe.ps1 -Url "https://..."     # classify a URL
 ```
 
-After `-Cancel` or `-Interrupt`, re-run with no flag to confirm it resumes from where it stopped
+After `-Pause` or `-Interrupt`, re-run with no flag to confirm it resumes from where it stopped
 rather than starting over.
 
 If these pass but the browser doesn't, the fault is registration or the extension.

@@ -143,7 +143,7 @@ reading every message a download emits:
 ```powershell
 cd packaging
 .\test_host_e2e.ps1                 # full download with live progress
-.\test_host_e2e.ps1 -Cancel 6       # pause partway, then re-run to resume
+.\test_host_e2e.ps1 -Pause 6       # pause partway, then re-run to resume
 .\test-probe.ps1 -Url "https://..." # classify a URL
 ```
 

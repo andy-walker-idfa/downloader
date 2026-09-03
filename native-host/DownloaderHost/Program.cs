@@ -598,8 +598,8 @@ class Program
 
     /// <summary>
     /// A running download's stop switch. Pause and cancel both cancel the token; the flag records
-    /// which one the user asked for, so the reply can say "paused" rather than "cancelled".
-    /// The partial file is retained either way -- only the wording differs.
+    /// which the user asked for, because the outcomes differ: pause keeps the partial file for
+    /// resuming, cancel discards it.
     /// </summary>
     sealed class DownloadControl
     {
@@ -834,6 +834,26 @@ class Program
                     catch (OperationCanceledException)
                     {
                         var partial = outPath + ".part";
+                        var bytes = File.Exists(partial) ? new FileInfo(partial).Length : 0L;
+
+                        // Pause keeps the partial so it can be resumed. Cancel abandons the
+                        // download, so the partial is deleted -- otherwise cancel is just pause
+                        // with a different label, and the abandoned file lingers forever in the
+                        // resume list. "Stop but keep it" is what Pause is for.
+                        if (!control.Paused)
+                        {
+                            foreach (var victim in new[] { partial, partial + ".meta" })
+                            {
+                                try { if (File.Exists(victim)) File.Delete(victim); }
+                                catch (Exception ex)
+                                {
+                                    logger.Log("host", "cancel_cleanup_failed", new { path = victim, message = ex.Message }, "Could not delete partial data after a cancel");
+                                }
+                            }
+
+                            logger.Log("host", "download_cancelled_discarded", new { id = requestId, url, path = outPath, discardedBytes = bytes }, "Cancelled download; partial data was discarded");
+                        }
+
                         await SendMessageAsync(new
                         {
                             id = requestId,
@@ -842,7 +862,7 @@ class Program
                             path = outPath,
                             tier = tier.ToString(),
                             resumable,
-                            bytes = File.Exists(partial) ? new FileInfo(partial).Length : 0L
+                            bytes
                         });
                         return;
                     }

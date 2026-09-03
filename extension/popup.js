@@ -89,6 +89,9 @@ function renderTransfers(requests) {
       cancel.className = "cancel";
       cancel.textContent = r.status === "cancelling" ? "Cancelling…" : "Cancel";
       cancel.disabled = stopping;
+      cancel.title = r.resumable
+        ? "Stop and delete the partial file. Use Pause to keep it."
+        : "Stop and delete the partial file";
       cancel.addEventListener("click", async () => {
         cancel.disabled = true;
         cancel.textContent = "Cancelling…";

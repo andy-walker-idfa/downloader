@@ -46,7 +46,7 @@ held open, reading every framed reply.
 ```powershell
 .\test_host_e2e.ps1 -PingOnly
 .\test_host_e2e.ps1
-.\test_host_e2e.ps1 -Cancel 6      # graceful pause
+.\test_host_e2e.ps1 -Pause 6      # graceful pause, partial kept
 .\test_host_e2e.ps1 -Interrupt 6   # kill mid-stream
 ```
 
