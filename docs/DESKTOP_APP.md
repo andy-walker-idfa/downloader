@@ -106,14 +106,25 @@ Covered by tests against a local HTTP server, so they need no network:
 The server is throttled deliberately: unthrottled, loopback transfers finish so fast that
 "concurrent" would pass without anything actually overlapping.
 
-### Phase 2 — Real buttons
+### Phase 2 — Real buttons — DONE
 
-- [ ] Per-row **Pause** (only when `resumable`), **Cancel**, wired to the host
-- [ ] **Delete `Pause_Click` and `Resume_Click`.** They relabel rows and lie about progress
-- [ ] Row state from the host's replies, never invented locally
+- [x] Per-row **Pause** (shown only when `resumable`) and **Cancel**, wired to the host
+- [x] `DownloadHandle` exposes a transfer's id, so pause and cancel can name one specific
+      download. `SendAsync` allocates the id internally and never returned it
+- [x] `DownloadItem` notifies on any type, so button state binds; `CanPause` / `CanCancel`
+      derive from status, resumability and whether a stop is already in flight
+- [x] Row state comes from the host's replies, never invented locally
+- [x] The fake `Pause_Click` / `Resume_Click` were already deleted in phase 1
 
-**Done when:** Pause leaves a `.part` on disk and Cancel removes it — the same behaviour the
-extension has, verified the same way.
+| Test | Proves |
+|---|---|
+| `Pause_StopsTheTransfer_AndKeepsThePartialFile` | `.part` and `.part.meta` survive, no final file yet |
+| `Cancel_StopsTheTransfer_AndDiscardsThePartialFile` | both are removed |
+| `PausedDownload_ResumesFromWhereItStopped` | resuming to the same path continues and completes |
+
+A note for whoever extends the test server: handle each request on its own task and tolerate the
+client aborting. Pause aborts a response mid-write, and handling requests inline meant that threw
+out of the accept loop and silently stopped the server, so the *next* request hung for ever.
 
 ### Phase 3 — Unfinished list and settings
 

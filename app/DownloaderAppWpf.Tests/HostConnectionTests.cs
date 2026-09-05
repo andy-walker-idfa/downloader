@@ -37,54 +37,71 @@ internal sealed class LocalFileServer : IDisposable
                 try { context = await _listener.GetContextAsync(); }
                 catch { return; }
 
-                var response = context.Response;
-                response.ContentType = "application/octet-stream";
-
-                if (context.Request.HttpMethod == "HEAD")
-                {
-                    response.ContentLength64 = _body.Length;
-                    response.Close();
-                    continue;
-                }
-
-                // Answer ranges so the transfer is classified as resumable, matching a real CDN.
-                var range = context.Request.Headers["Range"];
-                if (range is not null && range.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
-                {
-                    var spec = range["bytes=".Length..].Split('-');
-                    var from = int.Parse(spec[0]);
-                    var to = spec.Length > 1 && spec[1].Length > 0 ? int.Parse(spec[1]) : _body.Length - 1;
-                    var slice = _body[from..(to + 1)];
-
-                    response.StatusCode = 206;
-                    response.Headers.Add("Content-Range", $"bytes {from}-{to}/{_body.Length}");
-                    response.ContentLength64 = slice.Length;
-                    await response.OutputStream.WriteAsync(slice);
-                    response.Close();
-                    continue;
-                }
-
-                response.ContentLength64 = _body.Length;
-                if (_chunkDelayMs > 0)
-                {
-                    // Dribble the body out so the transfer takes real time and two downloads
-                    // can be observed genuinely overlapping rather than merely both succeeding.
-                    const int chunk = 64 * 1024;
-                    for (var offset = 0; offset < _body.Length; offset += chunk)
-                    {
-                        var size = Math.Min(chunk, _body.Length - offset);
-                        await response.OutputStream.WriteAsync(_body.AsMemory(offset, size));
-                        await response.OutputStream.FlushAsync();
-                        await Task.Delay(_chunkDelayMs);
-                    }
-                }
-                else
-                {
-                    await response.OutputStream.WriteAsync(_body);
-                }
-                response.Close();
+                // Each request on its own task. Handling them in the accept loop meant a client
+                // that aborted mid-response (exactly what pause does) threw out of the loop and
+                // silently stopped the server, so the next request hung for ever.
+                _ = Task.Run(() => HandleAsync(context));
             }
         });
+    }
+
+    private async Task HandleAsync(HttpListenerContext context)
+    {
+        try
+        {
+            var response = context.Response;
+            response.ContentType = "application/octet-stream";
+
+            if (context.Request.HttpMethod == "HEAD")
+            {
+                response.ContentLength64 = _body.Length;
+                response.Close();
+                return;
+            }
+
+            // Answer ranges so the transfer is classified as resumable, matching a real CDN.
+            var range = context.Request.Headers["Range"];
+            if (range is not null && range.StartsWith("bytes=", StringComparison.OrdinalIgnoreCase))
+            {
+                var spec = range["bytes=".Length..].Split('-');
+                var from = int.Parse(spec[0]);
+                var to = spec.Length > 1 && spec[1].Length > 0 ? int.Parse(spec[1]) : _body.Length - 1;
+                var slice = _body[from..(to + 1)];
+
+                response.StatusCode = 206;
+                response.Headers.Add("Content-Range", $"bytes {from}-{to}/{_body.Length}");
+                response.ContentLength64 = slice.Length;
+                await response.OutputStream.WriteAsync(slice);
+                response.Close();
+                return;
+            }
+
+            response.ContentLength64 = _body.Length;
+            if (_chunkDelayMs > 0)
+            {
+                // Dribble the body out so the transfer takes real time and two downloads
+                // can be observed genuinely overlapping rather than merely both succeeding.
+                const int chunk = 64 * 1024;
+                for (var offset = 0; offset < _body.Length; offset += chunk)
+                {
+                    var size = Math.Min(chunk, _body.Length - offset);
+                    await response.OutputStream.WriteAsync(_body.AsMemory(offset, size));
+                    await response.OutputStream.FlushAsync();
+                    await Task.Delay(_chunkDelayMs);
+                }
+            }
+            else
+            {
+                await response.OutputStream.WriteAsync(_body);
+            }
+
+            response.Close();
+        }
+        catch
+        {
+            // The client aborting mid-response is normal here; it is what pause and cancel do.
+            try { context.Response.Abort(); } catch { }
+        }
     }
 
     public void Dispose()
@@ -219,5 +236,72 @@ public class HostConnectionTests : IDisposable
         await Assert.ThrowsAnyAsync<Exception>(() => download);
         var completed = await Task.WhenAny(disconnected.Task, Task.Delay(TimeSpan.FromSeconds(10)));
         Assert.Same(disconnected.Task, completed);
+    }
+    /// <summary>Waits until bytes are actually flowing, so a stop lands mid-transfer.</summary>
+    private static Action<HostMessage> SignalOnProgress(TaskCompletionSource flowing) =>
+        m => { if (m.Status == "progress" && m.Received > 0) flowing.TrySetResult(); };
+
+    [Fact]
+    public async Task Pause_StopsTheTransfer_AndKeepsThePartialFile()
+    {
+        using var server = new LocalFileServer(8815, 2_000_000, "p.bin", chunkDelayMs: 60);
+        var target = Path.Combine(_folder, "p.bin");
+        var flowing = new TaskCompletionSource();
+
+        var handle = _host.StartDownload(new { url = server.Url, path = target }, SignalOnProgress(flowing));
+        await flowing.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await handle.PauseAsync();
+
+        var result = await handle.Completion.WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Equal("paused", result.Status);
+        Assert.True(File.Exists(target + ".part"), "pause must keep the partial file");
+        Assert.True(File.Exists(target + ".part.meta"), "pause must keep the resume metadata");
+        Assert.False(File.Exists(target), "the final file should not exist yet");
+    }
+
+    [Fact]
+    public async Task Cancel_StopsTheTransfer_AndDiscardsThePartialFile()
+    {
+        using var server = new LocalFileServer(8816, 2_000_000, "c2.bin", chunkDelayMs: 60);
+        var target = Path.Combine(_folder, "c2.bin");
+        var flowing = new TaskCompletionSource();
+
+        var handle = _host.StartDownload(new { url = server.Url, path = target }, SignalOnProgress(flowing));
+        await flowing.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await handle.CancelAsync();
+
+        var result = await handle.Completion.WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Equal("cancelled", result.Status);
+        Assert.False(File.Exists(target + ".part"), "cancel must discard the partial file");
+        Assert.False(File.Exists(target + ".part.meta"), "cancel must discard the resume metadata");
+    }
+
+    /// <summary>
+    /// The reason pause keeps the partial: resuming continues from it rather than starting over.
+    /// </summary>
+    [Fact]
+    public async Task PausedDownload_ResumesFromWhereItStopped()
+    {
+        using var server = new LocalFileServer(8817, 2_000_000, "r.bin", chunkDelayMs: 60);
+        var target = Path.Combine(_folder, "r.bin");
+        var flowing = new TaskCompletionSource();
+
+        var handle = _host.StartDownload(new { url = server.Url, path = target }, SignalOnProgress(flowing));
+        await flowing.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await handle.PauseAsync();
+        await handle.Completion.WaitAsync(TimeSpan.FromSeconds(20));
+
+        var pausedAt = new FileInfo(target + ".part").Length;
+        Assert.InRange(pausedAt, 1, 1_999_999);
+
+        // Same path: that is what tells the host to continue rather than begin again.
+        var resumed = await _host.SendAsync("download", new { url = server.Url, path = target })
+            .WaitAsync(TimeSpan.FromSeconds(60));
+
+        Assert.Equal("finished", resumed.Status);
+        Assert.Equal(2_000_000, new FileInfo(target).Length);
+        Assert.False(File.Exists(target + ".part"), "the partial should be gone once complete");
     }
 }

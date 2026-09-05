@@ -6,6 +6,9 @@
         xmlns:local="clr-namespace:DownloaderAppWpf"
         mc:Ignorable="d"
         Title="Windows Downloader" Height="620" Width="960">
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVis"/>
+    </Window.Resources>
     <Grid Margin="16">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
@@ -36,11 +39,28 @@
                 <DataGridTextColumn Header="Downloaded" Binding="{Binding OffsetText}" Width="120"/>
                 <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="110"/>
                 <DataGridTextColumn Header="Tier" Binding="{Binding TierText}" Width="150"/>
+
+                <DataGridTemplateColumn Header="" Width="150">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal">
+                                <!-- Pause appears only where the server honours ranges. On a
+                                     non-resumable source it would mean discarding everything
+                                     downloaded so far, so only Cancel is offered there. -->
+                                <Button Content="Pause" Padding="10,2" Margin="0,0,6,0"
+                                        Click="PauseRow_Click"
+                                        Visibility="{Binding CanPause, Converter={StaticResource BoolToVis}}"/>
+                                <Button Content="Cancel" Padding="10,2"
+                                        Click="CancelRow_Click"
+                                        IsEnabled="{Binding CanCancel}"
+                                        Visibility="{Binding IsActive, Converter={StaticResource BoolToVis}}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
 
-        <!-- Per-row Pause/Cancel arrive in phase 2. The buttons that used to sit here only
-             relabelled a row and never contacted the host, so they are gone rather than lying. -->
         <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="#555" Text="Ready"/>
     </Grid>
 </Window>

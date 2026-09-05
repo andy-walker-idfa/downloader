@@ -91,6 +91,41 @@ public sealed class HostConnection : IDisposable
 
     // --- requests -------------------------------------------------------------
 
+    /// <summary>Allocates an id and records the request so its replies can be routed back.</summary>
+    private (string Id, Pending Pending) Register(Action<HostMessage>? onInterim)
+    {
+        var id = Interlocked.Increment(ref _nextId).ToString();
+        var pending = new Pending
+        {
+            Completion = new TaskCompletionSource<HostMessage>(TaskCreationOptions.RunContinuationsAsynchronously),
+            OnInterim = onInterim
+        };
+        _pending[id] = pending;
+        return (id, pending);
+    }
+
+    /// <summary>
+    /// Starts a download and hands back its id straight away, so it can be paused or cancelled
+    /// while it runs. SendAsync hides the id, which left no way to name a specific transfer.
+    /// </summary>
+    public DownloadHandle StartDownload(object arguments, Action<HostMessage>? onInterim = null)
+    {
+        var (id, pending) = Register(onInterim);
+
+        _ = WriteAsync(BuildPayload("download", id, arguments), CancellationToken.None)
+            .ContinueWith(
+                write =>
+                {
+                    if (write.IsFaulted && _pending.TryRemove(id, out var failed))
+                    {
+                        failed.Completion.TrySetException(write.Exception!.GetBaseException());
+                    }
+                },
+                TaskScheduler.Default);
+
+        return new DownloadHandle(this, id, pending.Completion.Task);
+    }
+
     /// <summary>
     /// Sends a command and completes when its terminal reply arrives. Interim replies (started,
     /// progress) go to <paramref name="onInterim"/> and keep the request open.
@@ -101,13 +136,7 @@ public sealed class HostConnection : IDisposable
         Action<HostMessage>? onInterim = null,
         CancellationToken cancellationToken = default)
     {
-        var id = Interlocked.Increment(ref _nextId).ToString();
-        var pending = new Pending
-        {
-            Completion = new TaskCompletionSource<HostMessage>(TaskCreationOptions.RunContinuationsAsynchronously),
-            OnInterim = onInterim
-        };
-        _pending[id] = pending;
+        var (id, pending) = Register(onInterim);
 
         try
         {
@@ -325,4 +354,31 @@ public sealed class HostConnection : IDisposable
         _process?.Dispose();
         _writeLock.Dispose();
     }
+}
+
+/// <summary>
+/// A running download. Pause and cancel refer to it by the id the connection assigned, which is
+/// why starting a download has to hand that id back.
+/// </summary>
+public sealed class DownloadHandle
+{
+    private readonly HostConnection _connection;
+
+    internal DownloadHandle(HostConnection connection, string id, Task<HostMessage> completion)
+    {
+        _connection = connection;
+        Id = id;
+        Completion = completion;
+    }
+
+    public string Id { get; }
+
+    /// <summary>Completes with the terminal reply: finished, paused, cancelled or error.</summary>
+    public Task<HostMessage> Completion { get; }
+
+    /// <summary>Stops the transfer but keeps the partial file, so it can be resumed.</summary>
+    public Task PauseAsync() => _connection.PostAsync("pause", new { target = Id });
+
+    /// <summary>Stops the transfer and discards the partial file.</summary>
+    public Task CancelAsync() => _connection.PostAsync("cancel", new { target = Id });
 }

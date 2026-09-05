@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.IO;
@@ -73,10 +74,14 @@ public partial class MainWindow : Window
     {
         try
         {
-            var result = await App.Host.SendAsync(
-                "download",
+            // StartDownload hands back the id immediately, which is what makes it possible to
+            // pause or cancel this specific transfer while it runs.
+            var handle = App.Host.StartDownload(
                 new { url },
                 interim => OnUi(() => ApplyInterim(item, interim)));
+
+            item.Handle = handle;
+            var result = await handle.Completion;
 
             OnUi(() =>
             {
@@ -103,6 +108,8 @@ public partial class MainWindow : Window
                         break;
                 }
 
+                item.IsStopping = false;
+                item.Handle = null;
                 UpdateStatus();
             });
         }
@@ -112,6 +119,8 @@ public partial class MainWindow : Window
             {
                 item.Status = "Error";
                 item.TierText = ex.Message;
+                item.IsStopping = false;
+                item.Handle = null;
                 UpdateStatus();
             });
         }
@@ -137,6 +146,36 @@ public partial class MainWindow : Window
                     item.ProgressText = $"{message.Received * 100.0 / message.Total.Value:F0}%";
                 }
                 break;
+        }
+    }
+
+    private async void PauseRow_Click(object sender, RoutedEventArgs e) =>
+        await StopAsync(sender, pause: true);
+
+    private async void CancelRow_Click(object sender, RoutedEventArgs e) =>
+        await StopAsync(sender, pause: false);
+
+    /// <summary>
+    /// Pause keeps the partial file so the transfer can be resumed; cancel discards it. The host
+    /// decides which happened and reports it on the original request, so nothing is assumed here.
+    /// </summary>
+    private async System.Threading.Tasks.Task StopAsync(object sender, bool pause)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not DownloadItem item) return;
+        if (item.Handle is not { } handle) return;
+
+        item.IsStopping = true;
+        item.Status = pause ? "Pausing" : "Cancelling";
+
+        try
+        {
+            if (pause) await handle.PauseAsync();
+            else await handle.CancelAsync();
+        }
+        catch (Exception ex)
+        {
+            item.IsStopping = false;
+            item.TierText = ex.Message;
         }
     }
 
@@ -206,28 +245,68 @@ public class DownloadItem : INotifyPropertyChanged
     private string _offsetText = "0 B";
     private string _sizeText = "-";
     private string _tierText = "";
+    private bool _resumable;
+    private bool _isStopping;
 
     public string Url { get; init; } = "";
 
-    /// <summary>Whether the server supports resuming. Drives the phase 2 Pause button.</summary>
-    public bool Resumable { get; set; }
+    /// <summary>The running transfer, so it can be named when pausing or cancelling.</summary>
+    public DownloadHandle? Handle { get; set; }
 
     public string Name { get => _name; set => Set(ref _name, value); }
-    public string Status { get => _status; set => Set(ref _status, value); }
     public string ProgressText { get => _progressText; set => Set(ref _progressText, value); }
     public string OffsetText { get => _offsetText; set => Set(ref _offsetText, value); }
     public string SizeText { get => _sizeText; set => Set(ref _sizeText, value); }
     public string TierText { get => _tierText; set => Set(ref _tierText, value); }
 
-    public bool IsActive => Status is "Starting" or "Downloading";
+    public string Status
+    {
+        get => _status;
+        set { if (Set(ref _status, value)) NotifyButtons(); }
+    }
+
+    /// <summary>Whether the server honours ranges. Decides whether Pause is offered at all.</summary>
+    public bool Resumable
+    {
+        get => _resumable;
+        set { if (Set(ref _resumable, value)) NotifyButtons(); }
+    }
+
+    /// <summary>A pause or cancel is in flight; the buttons stay disabled until it lands.</summary>
+    public bool IsStopping
+    {
+        get => _isStopping;
+        set { if (Set(ref _isStopping, value)) NotifyButtons(); }
+    }
+
+    public bool IsActive => Status is "Starting" or "Downloading" or "Pausing" or "Cancelling";
+
+    /// <summary>
+    /// Pause is offered only where the server can actually resume. On a non-resumable source it
+    /// would silently mean "discard everything downloaded so far", so Cancel is the honest word.
+    /// </summary>
+    public bool CanPause => IsActive && Resumable && !IsStopping;
+
+    public bool CanCancel => IsActive && !IsStopping;
 
     public event PropertyChangedEventHandler? PropertyChanged;
 
-    private void Set(ref string field, string value, [CallerMemberName] string? property = null)
+    private void NotifyButtons()
     {
-        if (field == value) return;
-        field = value;
+        Notify(nameof(IsActive));
+        Notify(nameof(CanPause));
+        Notify(nameof(CanCancel));
+    }
+
+    private void Notify(string property) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
+
+    private bool Set<T>(ref T field, T value, [CallerMemberName] string? property = null)
+    {
+        if (EqualityComparer<T>.Default.Equals(field, value)) return false;
+        field = value;
+        Notify(property!);
+        return true;
     }
 
     public static string FormatBytes(long bytes)
