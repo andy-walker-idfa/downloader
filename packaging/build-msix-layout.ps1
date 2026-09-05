@@ -8,16 +8,20 @@
     mode) or packed into an .msix with makeappx. The host is placed beside the app because
     DownloaderService.ResolveHostPath looks there first -- that is the packaged layout.
 
-    This is a spike, not a release build. The payload is framework-dependent, so it needs the
-    .NET 8 desktop runtime on the machine; a shipping package should be self-contained or
-    declare the framework dependency.
+    By default the payload is framework-dependent and needs the .NET 8 desktop runtime present.
+    Pass -SelfContained to bundle the runtime, which produces a folder that can be copied to
+    another machine and run directly -- no installer, no admin, no Developer Mode.
 #>
 
 param(
     # Defaults to LOCALAPPDATA, not the repo: Windows refuses to deploy an MSIX from exFAT, and
     # a working tree on a data drive is often exFAT. Failure mode is
     # "0x80073CFD ... cannot deploy to path layout of file system type exFAT".
-    [string]$LayoutDir = (Join-Path $env:LOCALAPPDATA "WindowsDownloader\msix\layout")
+    [string]$LayoutDir = (Join-Path $env:LOCALAPPDATA "WindowsDownloader\msix\layout"),
+
+    # Bundles the .NET runtime so the folder runs on a machine that has no .NET installed.
+    # Required for testing on a clean machine; without it the app simply will not start there.
+    [switch]$SelfContained
 )
 
 $ErrorActionPreference = "Stop"
@@ -55,9 +59,16 @@ if ($running.Count -gt 0) {
     Start-Sleep -Milliseconds 500
 }
 
-Write-Step "Publishing the desktop app"
+# WPF does not support trimming, so a self-contained build is large. That is the price of
+# running with no runtime installed.
+$publishArgs = @("-c", "Release", "--nologo")
+if ($SelfContained) {
+    $publishArgs += @("-r", "win-x64", "--self-contained", "true")
+}
+
+Write-Step "Publishing the desktop app$(if ($SelfContained) { ' (self-contained)' })"
 dotnet publish (Join-Path $RepoRoot "app\DownloaderAppWpf\DownloaderAppWpf.csproj") `
-    -c Release -o $LayoutDir --nologo | Out-Null
+    @publishArgs -o $LayoutDir | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "app publish failed" }
 
 Write-Step "Publishing the native host into host\"
@@ -65,8 +76,10 @@ Write-Step "Publishing the native host into host\"
 # path in one step -- which matters because a self-contained host is more than one file.
 # ResolveHostPath checks <app>\host\DownloaderHost.exe.
 $hostDir = Join-Path $LayoutDir "host"
+# The host is a separate process with its own runtime resolution, so it needs the same
+# treatment: a self-contained app next to a framework-dependent host still fails.
 dotnet publish (Join-Path $RepoRoot "native-host\DownloaderHost\DownloaderHost.csproj") `
-    -c Release -o $hostDir --nologo | Out-Null
+    @publishArgs -o $hostDir | Out-Null
 if ($LASTEXITCODE -ne 0) { throw "host publish failed" }
 
 Write-Step "Copying package assets and manifest"
@@ -81,5 +94,13 @@ foreach ($required in @("DownloaderAppWpf.exe", "host\DownloaderHost.exe", "Appx
 $size = [math]::Round(((Get-ChildItem $LayoutDir -Recurse -File | Measure-Object Length -Sum).Sum / 1MB), 1)
 Write-Host "  layout ready: $size MB, $((Get-ChildItem $LayoutDir -Recurse -File).Count) files" -ForegroundColor Green
 Write-Host ""
-Write-Host "Register it (requires Developer Mode):" -ForegroundColor Cyan
-Write-Host "  Add-AppxPackage -Register `"$LayoutDir\AppxManifest.xml`""
+if ($SelfContained) {
+    Write-Host "Portable build. Copy this folder to another machine and run DownloaderAppWpf.exe:" -ForegroundColor Cyan
+    Write-Host "  $LayoutDir"
+    Write-Host ""
+    Write-Host "Copy it to a local disk first. Running it from removable media registers the host" -ForegroundColor Yellow
+    Write-Host "at that path, and unplugging the drive leaves the browsers pointing at nothing." -ForegroundColor Yellow
+} else {
+    Write-Host "Register it (requires Developer Mode):" -ForegroundColor Cyan
+    Write-Host "  Add-AppxPackage -Register `"$LayoutDir\AppxManifest.xml`""
+}

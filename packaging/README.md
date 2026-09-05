@@ -81,6 +81,29 @@ Classifies a single URL and explains the tier.
 .\test-probe.ps1 -Url "https://cdn.kernel.org/pub/linux/kernel/v6.x/linux-6.0.tar.xz"
 ```
 
+## build-msix-layout.ps1
+
+Stages the app with the host in a `host\` subfolder beside it, which is the arrangement a
+packaged build uses and the first place `HostLocator` looks.
+
+```powershell
+.uild-msix-layout.ps1                    # framework-dependent, for MSIX registration here
+.uild-msix-layout.ps1 -SelfContained     # portable: bundles the .NET runtime
+```
+
+`-SelfContained` produces a folder that runs on a machine with no .NET installed - no installer,
+no admin, no Developer Mode. It is around 230 MB because WPF cannot be trimmed. Both the app and
+the host are published self-contained: they are separate processes with separate runtime
+resolution, so a self-contained app beside a framework-dependent host still fails on a clean
+machine.
+
+Copy the folder to a local disk before running it. Started from removable media, the app
+registers the host at that path, and unplugging the drive leaves every browser pointing at
+nothing.
+
+It stages onto an NTFS volume by default and refuses otherwise, because Windows cannot deploy
+MSIX packages from exFAT.
+
 ## AppxManifest.xml and Assets/
 
 MSIX packaging for the WPF app, as a full-trust desktop package. Not yet submittable — the
