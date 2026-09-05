@@ -46,6 +46,10 @@ public class DownloadMetadata
     [JsonPropertyName("lastModified")]
     public string? LastModified { get; set; }
 
+    /// <summary>Filename the server offered via Content-Disposition, if any.</summary>
+    [JsonPropertyName("suggestedFileName")]
+    public string? SuggestedFileName { get; set; }
+
     [JsonPropertyName("tier")]
     public DownloadTier Tier { get; set; } = DownloadTier.NotResumable;
 
@@ -81,6 +85,111 @@ public class DownloadMetadata
         if (!string.IsNullOrEmpty(dir))
             Directory.CreateDirectory(dir);
         File.WriteAllText(metaPath, json);
+    }
+}
+
+/// <summary>
+/// User settings, shared by the extension and the desktop app because both talk to this host.
+/// Stored beside the log in %LOCALAPPDATA%, so it survives updates and repo operations.
+/// </summary>
+public static class Settings
+{
+    private sealed class Data
+    {
+        [JsonPropertyName("downloadDir")]
+        public string? DownloadDir { get; set; }
+    }
+
+    private static readonly object Sync = new();
+
+    private static string SettingsFile => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "WindowsDownloader", "settings.json");
+
+    public static string DefaultDownloadDir => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+
+    private static string? _downloadDir;
+
+    /// <summary>Where downloads are saved. Falls back to the user's Downloads folder.</summary>
+    public static string DownloadDir
+    {
+        get
+        {
+            lock (Sync)
+            {
+                if (_downloadDir is null)
+                {
+                    try
+                    {
+                        if (File.Exists(SettingsFile))
+                        {
+                            var data = JsonSerializer.Deserialize<Data>(File.ReadAllText(SettingsFile));
+                            if (!string.IsNullOrWhiteSpace(data?.DownloadDir))
+                                _downloadDir = data.DownloadDir;
+                        }
+                    }
+                    catch
+                    {
+                        // A corrupt settings file must not stop downloads; fall back silently.
+                    }
+
+                    _downloadDir ??= DefaultDownloadDir;
+                }
+
+                // The folder can be deleted or a removable drive unplugged between launches.
+                // Saving into a vanished directory would fail confusingly, so fall back.
+                if (!Directory.Exists(_downloadDir))
+                {
+                    try { Directory.CreateDirectory(_downloadDir); }
+                    catch { return DefaultDownloadDir; }
+                }
+
+                return _downloadDir;
+            }
+        }
+    }
+
+    /// <summary>Validates and persists a new download folder. Returns null on success.</summary>
+    public static string? SetDownloadDir(string? dir)
+    {
+        if (string.IsNullOrWhiteSpace(dir)) return "a folder is required";
+
+        dir = Environment.ExpandEnvironmentVariables(dir.Trim().Trim('"'));
+
+        if (!Path.IsPathFullyQualified(dir))
+            return $"'{dir}' is not a full path (for example {DefaultDownloadDir})";
+
+        try
+        {
+            Directory.CreateDirectory(dir);
+
+            // Prove it is actually writable rather than discovering that mid-download.
+            var probe = Path.Combine(dir, $".downloader-write-test-{Guid.NewGuid():N}");
+            File.WriteAllText(probe, "");
+            File.Delete(probe);
+        }
+        catch (Exception ex)
+        {
+            return $"cannot write to '{dir}': {ex.Message}";
+        }
+
+        lock (Sync)
+        {
+            _downloadDir = dir;
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(SettingsFile)!);
+                File.WriteAllText(SettingsFile,
+                    JsonSerializer.Serialize(new Data { DownloadDir = dir }, new JsonSerializerOptions { WriteIndented = true }));
+            }
+            catch (Exception ex)
+            {
+                return $"folder accepted but could not be saved: {ex.Message}";
+            }
+        }
+
+        return null;
     }
 }
 
@@ -214,6 +323,24 @@ public class DownloadManager
     }
 
     /// <summary>
+    /// The filename the server offers via Content-Disposition. This is the authoritative name:
+    /// a URL path often has no filename at all (".../download_subtitle/en" would otherwise be
+    /// saved as a file called "en"), and the browser frequently has not resolved one yet when it
+    /// hands the download over.
+    /// </summary>
+    internal static string? FileNameFromContentDisposition(HttpResponseMessage response)
+    {
+        var disposition = response.Content.Headers.ContentDisposition;
+        if (disposition is null) return null;
+
+        // FileNameStar is the RFC 5987 form and already decoded; FileName may arrive quoted.
+        var name = disposition.FileNameStar ?? disposition.FileName;
+        if (string.IsNullOrWhiteSpace(name)) return null;
+
+        return name.Trim().Trim('"');
+    }
+
+    /// <summary>
     /// Probe the URL to detect its resumability tier.
     /// Returns the tier and key metadata (ETag, Content-Length, etc.).
     /// </summary>
@@ -243,6 +370,7 @@ public class DownloadManager
                     metadata.ContentLength = headResponse.Content.Headers.ContentLength;
                     metadata.ETag = headResponse.Headers.ETag?.Tag;
                     metadata.LastModified = headResponse.Content.Headers.LastModified?.ToString("R");
+                    metadata.SuggestedFileName ??= FileNameFromContentDisposition(headResponse);
                     DebugLogger.Current?.Log("host", "probe_head", new { url = url.AbsoluteUri, status = (int)headResponse.StatusCode, acceptsRanges, contentLength = metadata.ContentLength, etag = metadata.ETag, reason = headResponse.ReasonPhrase }, acceptsRanges ? "HEAD confirmed Accept-Ranges" : "HEAD completed without Accept-Ranges");
                 }
                 else
@@ -260,6 +388,8 @@ public class DownloadManager
             ApplyHeaders(rangeRequest, headers);
             rangeRequest.Headers.Range = new RangeHeaderValue(0, 0);
             using var rangeResponse = await httpClient.SendAsync(rangeRequest, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+            metadata.SuggestedFileName ??= FileNameFromContentDisposition(rangeResponse);
 
             DebugLogger.Current?.Log("host", "probe_range", new { url = url.AbsoluteUri, status = (int)rangeResponse.StatusCode, range = "bytes=0-0", contentRange = rangeResponse.Content.Headers.ContentRange?.ToString(), acceptsRanges }, rangeResponse.StatusCode == HttpStatusCode.OK ? "Range request returned 200 OK, source is not resumable" : "Range request behavior recorded for resumability classification");
 
@@ -633,6 +763,42 @@ class Program
                     logger.Log("host", "ping", new { id = requestId }, "Browser handshake check");
                     await SendMessageAsync(new { id = requestId, status = "pong", pid = Environment.ProcessId, logPath = DebugLogger.Current?.LogPath });
                 }
+                else if (string.Equals(cmd, "get_settings", StringComparison.OrdinalIgnoreCase))
+                {
+                    await SendMessageAsync(new
+                    {
+                        id = requestId,
+                        status = "settings",
+                        downloadDir = Settings.DownloadDir,
+                        defaultDownloadDir = Settings.DefaultDownloadDir
+                    });
+                }
+                else if (string.Equals(cmd, "set_settings", StringComparison.OrdinalIgnoreCase))
+                {
+                    var requested = root.TryGetProperty("downloadDir", out var d) && d.ValueKind == JsonValueKind.String
+                        ? d.GetString()
+                        : null;
+
+                    // An empty value means "go back to the browser's Downloads folder".
+                    var target = string.IsNullOrWhiteSpace(requested) ? Settings.DefaultDownloadDir : requested;
+                    var problem = Settings.SetDownloadDir(target);
+
+                    if (problem is not null)
+                    {
+                        logger.Log("host", "settings_rejected", new { id = requestId, requested, problem }, "Refused a download folder that cannot be used");
+                        await SendMessageAsync(new { id = requestId, status = "error", message = problem });
+                        return;
+                    }
+
+                    logger.Log("host", "settings_updated", new { id = requestId, downloadDir = Settings.DownloadDir }, "Download folder changed");
+                    await SendMessageAsync(new
+                    {
+                        id = requestId,
+                        status = "settings",
+                        downloadDir = Settings.DownloadDir,
+                        defaultDownloadDir = Settings.DefaultDownloadDir
+                    });
+                }
                 else if (string.Equals(cmd, "list_partials", StringComparison.OrdinalIgnoreCase))
                 {
                     // Unfinished downloads are recoverable from disk alone: each .part has a
@@ -641,7 +807,7 @@ class Program
                     // "resume" list.
                     var dir = root.TryGetProperty("dir", out var d) && d.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(d.GetString())
                         ? d.GetString()!
-                        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
+                        : Settings.DownloadDir;
 
                     var items = new List<object>();
                     try
@@ -756,23 +922,12 @@ class Program
                         return;
                     }
 
-                    var filename = root.TryGetProperty("filename", out var f) && f.ValueKind == JsonValueKind.String ? f.GetString() : null;
-                    if (string.IsNullOrWhiteSpace(filename))
-                    {
-                        filename = Path.GetFileName(new Uri(url).LocalPath);
-                    }
-                    filename = SanitizeFileName(filename);
+                    var explicitPath = root.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(p.GetString())
+                        ? p.GetString()
+                        : null;
+                    var browserFileName = root.TryGetProperty("filename", out var f) && f.ValueKind == JsonValueKind.String ? f.GetString() : null;
 
-                    var outPath = root.TryGetProperty("path", out var p) && p.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(p.GetString())
-                        ? p.GetString()!
-                        : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", filename);
-
-                    if (string.IsNullOrWhiteSpace(outPath))
-                    {
-                        throw new InvalidOperationException("Target output path is missing.");
-                    }
-
-                    logger.Log("host", "download_request", new { id = requestId, url, path = outPath, filename, source = root.TryGetProperty("source", out var src) && src.ValueKind == JsonValueKind.String ? src.GetString() : "browser" }, "Browser requested a download to be handled by the native host");
+                    logger.Log("host", "download_request", new { id = requestId, url, explicitPath, browserFileName, source = root.TryGetProperty("source", out var src) && src.ValueKind == JsonValueKind.String ? src.GetString() : "browser" }, "Browser requested a download to be handled by the native host");
 
                     var control = new DownloadControl();
                     using var cts = control.Cts;
@@ -782,6 +937,46 @@ class Program
                     var manager = new DownloadManager();
                     var (tier, metadata) = await manager.ProbeAsync(new Uri(url), client, cts.Token, headers);
                     var resumable = tier == DownloadTier.FullyResumable || tier == DownloadTier.ResumableUnverified;
+
+                    // Naming happens after the probe on purpose: only then do we know what the
+                    // server calls the file. A URL path frequently has no filename at all --
+                    // ".../download_subtitle/en" would otherwise be saved as a file named "en" --
+                    // and the browser often has not resolved a name when it hands the download over.
+                    string outPath;
+                    string nameSource;
+                    if (explicitPath is not null)
+                    {
+                        outPath = explicitPath;
+                        nameSource = "caller";
+                    }
+                    else
+                    {
+                        var served = metadata.SuggestedFileName;
+                        string chosen;
+
+                        if (!string.IsNullOrWhiteSpace(browserFileName) &&
+                            (Path.HasExtension(browserFileName) || string.IsNullOrWhiteSpace(served)))
+                        {
+                            // Trust the browser's name, except when it lost the extension and the
+                            // server offers a better one.
+                            chosen = browserFileName!;
+                            nameSource = "browser";
+                        }
+                        else if (!string.IsNullOrWhiteSpace(served))
+                        {
+                            chosen = served!;
+                            nameSource = "content-disposition";
+                        }
+                        else
+                        {
+                            chosen = Path.GetFileName(new Uri(url).LocalPath);
+                            nameSource = "url";
+                        }
+
+                        outPath = Path.Combine(Settings.DownloadDir, SanitizeFileName(chosen));
+                    }
+
+                    logger.Log("host", "download_target", new { id = requestId, path = outPath, nameSource, served = metadata.SuggestedFileName }, "Resolved the save location");
 
                     // Only pick a fresh name when there is no resumable .part already in flight,
                     // otherwise every resume attempt would start a new file.

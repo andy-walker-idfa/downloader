@@ -72,6 +72,19 @@
       .toggle em { display: block; font-style: normal; font-size: 11px; color: var(--muted); margin-top: 2px; }
       h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 12px 0 6px; }
       .section-head { display: flex; align-items: baseline; justify-content: space-between; }
+      input[type="text"] {
+        width: 100%;
+        padding: 6px 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--bg);
+        color: var(--fg);
+        font: inherit;
+        font-size: 11px;
+      }
+      input[type="text"]:focus { outline: 1px solid var(--accent); border-color: var(--accent); }
+      .hint { font-size: 11px; color: var(--muted); margin-top: 4px; word-break: break-all; }
+      .hint.bad { color: var(--err); }
       button.link {
         flex: none;
         width: auto;
@@ -125,6 +138,14 @@
         <em>Click a site's own download button and we grab it. Needed for sites with no direct link.</em>
       </span>
     </label>
+
+    <h2>Download folder</h2>
+    <input type="text" id="folder" spellcheck="false" autocomplete="off" placeholder="Loading..." />
+    <div class="actions">
+      <button id="saveFolder" class="resume">Save</button>
+      <button id="defaultFolder">Use default</button>
+    </div>
+    <div class="hint" id="folderHint"></div>
 
     <h2>Unfinished — can be resumed</h2>
     <div id="partials"></div>

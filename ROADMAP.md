@@ -21,7 +21,9 @@ live progress in a grid. It is a shell, not a product.
 - [ ] Multiple concurrent downloads with per-row pause / resume / cancel
 - [ ] Surface the unfinished-downloads list (`list_partials`) so resumes survive an app restart
 - [ ] Keep one long-lived host process instead of one per download
-- [ ] Settings: download folder, concurrency, whether to take over browser downloads
+- [ ] Use the shared download folder setting the host already exposes (`get_settings`);
+      the app still has its own folder field
+- [ ] Settings: concurrency, whether to take over browser downloads
 - [ ] Proper error surfaces — currently an exception lands in a grid cell
 - [ ] Tray integration and notifications
 

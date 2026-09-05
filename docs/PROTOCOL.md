@@ -26,8 +26,17 @@ host after one reply.
 }
 ```
 
-`path` is optional; without it the host saves to the user's Downloads folder using a filename
-derived from the URL. `headers` is optional and is replayed on every request the host makes,
+`path` is optional. Without it the host saves into the configured download folder (see
+`get_settings`) and resolves the filename in this order, most trustworthy first:
+
+1. `filename` supplied by the caller - unless it has no extension and the server offers a better
+   name, which happens because the browser often has not resolved a name yet when it hands the
+   download over;
+2. the server's `Content-Disposition` header, captured during the probe;
+3. the last segment of the URL path.
+
+The URL is the last resort because it frequently carries no filename at all: a subtitle endpoint
+ending `/download_subtitle/en` would otherwise be saved as a file named `en`. `headers` is optional and is replayed on every request the host makes,
 which is what lets a captured mirror URL authorise. If the target exists and no `.part` is in
 progress, the host picks `name (1).ext` the way browsers do.
 
@@ -80,6 +89,22 @@ This reads from disk, so it survives a browser restart, a service-worker shutdow
 ```
 
 Deletes `path.part` and `path.part.meta`. Replies `discarded`.
+
+### `get_settings` / `set_settings`
+
+```json
+{ "cmd": "get_settings", "id": "s1" }
+{ "id":"s1", "status":"settings", "downloadDir":"C:\Users\me\Downloads",
+  "defaultDownloadDir":"C:\Users\me\Downloads" }
+```
+
+`set_settings` takes `downloadDir` and replies with the same `settings` shape, or `error` with a
+reason. The folder is created if missing and probed for writability, so a bad choice is refused
+immediately rather than failing mid-download. An empty `downloadDir` resets to the default.
+
+Settings live in `%LOCALAPPDATA%\WindowsDownloader\settings.json` and are shared by the
+extension and the desktop app, since both talk to this host. `list_partials` defaults to the
+configured folder, so the resume list follows it.
 
 ### `probe`
 

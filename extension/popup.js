@@ -6,7 +6,9 @@ const el = {
   transfers: document.getElementById("transfers"),
   log: document.getElementById("log"),
   intercept: document.getElementById("intercept"),
-  partials: document.getElementById("partials")
+  partials: document.getElementById("partials"),
+  folder: document.getElementById("folder"),
+  folderHint: document.getElementById("folderHint")
 };
 
 let currentUrl = "";
@@ -202,6 +204,27 @@ function renderPartials(items) {
   }
 }
 
+function renderFolder(settings, error) {
+  if (!settings) {
+    el.folder.placeholder = "host not connected";
+    return;
+  }
+
+  // Never clobber what the user is typing.
+  if (document.activeElement !== el.folder) {
+    el.folder.value = settings.downloadDir;
+  }
+
+  el.folderHint.className = error ? "hint bad" : "hint";
+  if (error) {
+    el.folderHint.textContent = error;
+  } else if (settings.downloadDir === settings.defaultDownloadDir) {
+    el.folderHint.textContent = "Using the default Downloads folder.";
+  } else {
+    el.folderHint.textContent = `Default is ${settings.defaultDownloadDir}`;
+  }
+}
+
 async function renderLog() {
   const stored = await chrome.storage.local.get(LOG_KEY);
   const entries = (stored[LOG_KEY] || []).slice(-60).reverse();
@@ -231,6 +254,7 @@ async function refresh() {
     el.conn.className = state.connected ? "up" : "";
     // Don't fight the user mid-click: only sync the checkbox when it disagrees.
     if (el.intercept.checked !== state.intercept) el.intercept.checked = state.intercept;
+    renderFolder(state.settings, state.settingsError);
     renderPartials(state.partials);
     renderTransfers(state.requests);
   } else {
@@ -244,6 +268,20 @@ document.getElementById("download").addEventListener("click", async () => {
   if (!currentUrl) return;
   await ask("popup_download", { url: currentUrl });
   setTimeout(refresh, 150);
+});
+
+document.getElementById("saveFolder").addEventListener("click", async () => {
+  await ask("popup_set_download_dir", { downloadDir: el.folder.value });
+  setTimeout(refresh, 300);
+});
+
+document.getElementById("defaultFolder").addEventListener("click", async () => {
+  await ask("popup_set_download_dir", { downloadDir: "" });
+  setTimeout(refresh, 300);
+});
+
+el.folder.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("saveFolder").click();
 });
 
 el.intercept.addEventListener("change", async () => {

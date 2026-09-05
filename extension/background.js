@@ -27,6 +27,11 @@ const requests = new Map();
 let partials = [];
 let lastPartialsAt = 0;
 
+/** Host-side settings. The host owns them so the desktop app sees the same values. */
+let settings = null;
+let settingsError = null;
+let lastSettingsAt = 0;
+
 // The popup polls popup_state roughly every 700ms while it is open, so a recent poll is a
 // reliable "the user is looking at the UI right now" signal.
 let lastPopupPollAt = 0;
@@ -139,6 +144,13 @@ ${tierAdvice(msg.tier)}`,
     case "partials":
       partials = Array.isArray(msg.items) ? msg.items : [];
       break;
+    case "settings":
+      settings = { downloadDir: msg.downloadDir, defaultDownloadDir: msg.defaultDownloadDir };
+      settingsError = null;
+      // The resume list is per-folder, so a folder change invalidates it.
+      lastPartialsAt = 0;
+      logEvent("info", `Download folder: ${msg.downloadDir}`);
+      break;
     case "discarded":
       logEvent("info", `Discarded partial: ${fileNameOf(msg.path)}`);
       partials = partials.filter((p) => p.path !== msg.path);
@@ -164,6 +176,11 @@ ${formatBytes(msg.bytes)} discarded.`,
       );
       break;
     case "error":
+      if (typeof msg.id === "string" && msg.id.startsWith("ss-")) {
+        settingsError = msg.message;
+        logEvent("warn", `Download folder rejected: ${msg.message}`);
+        break;
+      }
       logEvent("error", `Host error: ${msg.message}`);
       notify("Download failed", msg.message, "error");
       break;
@@ -458,9 +475,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         lastPartialsAt = Date.now();
         send({ cmd: "list_partials", id: `lp-${Date.now()}` });
       }
+      if (settings === null && Date.now() - lastSettingsAt > 3000) {
+        lastSettingsAt = Date.now();
+        send({ cmd: "get_settings", id: `gs-${Date.now()}` });
+      }
       sendResponse({
         connected: !!port,
         intercept: interceptEnabled,
+        settings,
+        settingsError,
         // Second line of defence against showing one transfer twice: the host already omits
         // running downloads, but its list is up to 3s stale, so drop anything live right now.
         partials: partials.filter(
@@ -488,6 +511,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       send({ cmd: "discard", id: `disc-${Date.now()}`, path: message.path });
       sendResponse({ ok: true });
       return false;
+
+    case "popup_set_download_dir": {
+      settingsError = null;
+      const ok = send({ cmd: "set_settings", id: `ss-${Date.now()}`, downloadDir: message.downloadDir || "" });
+      if (!ok) settingsError = "host is not connected";
+      sendResponse({ ok });
+      return false;
+    }
 
     case "popup_set_intercept":
       interceptEnabled = !!message.enabled;

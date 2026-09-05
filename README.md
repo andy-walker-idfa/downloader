@@ -39,6 +39,9 @@ managers corrupt files. Details in [docs/TIER_DETECTION.md](docs/TIER_DETECTION.
 - **Takes over browser downloads**, so sites with no direct link still work — the page does its
   POST or JS navigation as normal and the extension captures the resolved URL, forwarding the
   browser's cookies and referrer so session-bound mirror links still authorise
+- **Names files the way the server does** - honours `Content-Disposition` rather than guessing
+  from the URL, which often has no filename in it at all
+- **Configurable download folder**, shared by the extension and the desktop app
 - **Never guesses a URL.** If there's nothing downloadable where you clicked, it says so
 
 ## Install
