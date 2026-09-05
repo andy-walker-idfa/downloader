@@ -16,7 +16,12 @@ what works, what's missing, and what has to be true before a Store submission.
 ## Desktop app
 
 The WPF app in `app/DownloaderAppWpf` currently launches the host, sends one download, and shows
-live progress in a grid. It is a shell, not a product.
+live progress in a grid. It is a shell, not a product: it uses one of the host's nine commands,
+and its Pause/Resume buttons only relabel a row.
+
+**The plan is in [docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)** - current state, target
+architecture, and four phases with an acceptance check each. Read
+[docs/INVARIANTS.md](docs/INVARIANTS.md) before changing anything.
 
 - [ ] Multiple concurrent downloads with per-row pause / resume / cancel
 - [ ] Surface the unfinished-downloads list (`list_partials`) so resumes survive an app restart

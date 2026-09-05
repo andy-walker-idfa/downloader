@@ -138,7 +138,7 @@ extension/        Chromium MV3 extension
 native-host/      C# native messaging host + xUnit tests
 app/              WPF desktop app (early)
 packaging/        install script, e2e test harness, MSIX manifest and assets
-docs/             testing guide, protocol reference, tier detection
+docs/             architecture, invariants, testing, protocol, tier detection
 ```
 
 ## Development
