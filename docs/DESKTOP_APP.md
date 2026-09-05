@@ -86,17 +86,25 @@ The reply pattern per download is `started` → `progress`* → one of `finished
 Each phase must leave the app building, the tests passing, and the browser extension working.
 Verify with [TESTING.md](TESTING.md) after each.
 
-### Phase 1 — HostConnection
+### Phase 1 — HostConnection — DONE
 
-Replace `DownloaderService` with `HostConnection` plus a thin `DownloadItem` per transfer.
+- [x] `HostConnection`: start/restart, id correlation, message routing, disconnect reporting
+- [x] Multiple concurrent downloads, each with its own live progress
+- [x] `App` owns one instance for the process lifetime and disposes it only on exit
+- [x] Host path resolution moved to `HostLocator`, shared with `NativeHostRegistrar`
+- [x] `DownloaderService` deleted; the fake `Pause_Click` / `Resume_Click` deleted with it
+- [x] `app/DownloaderAppWpf.Tests` added and wired into CI
 
-- [ ] `HostConnection`: start/stop, id correlation, message routing, reconnect
-- [ ] Multiple concurrent downloads, each with its own live progress
-- [ ] `App` owns one instance for the process lifetime; dispose on exit
-- [ ] Keep `DownloaderService.ResolveHostPath` (or move it) — `NativeHostRegistrar` calls it
+Covered by tests against a local HTTP server, so they need no network:
 
-**Done when:** two downloads run at once with independent progress, and killing the host from
-Task Manager shows an error in the UI instead of a silent hang.
+| Test | Proves |
+|---|---|
+| `TwoDownloads_RunConcurrently_WithIndependentProgress` | both transfers' active windows overlap in time, each reports its own progress, one process serves both |
+| `Replies_AreMatchedById_NotByOrder` | a fast `ping` issued after a slow download does not consume the download's reply |
+| `HostDeath_FailsPendingRequests_AndRaisesDisconnected` | a killed host surfaces as an error rather than a UI that waits for ever |
+
+The server is throttled deliberately: unthrottled, loopback transfers finish so fast that
+"concurrent" would pass without anything actually overlapping.
 
 ### Phase 2 — Real buttons
 

@@ -137,8 +137,7 @@ public static class NativeHostRegistrar
     /// </summary>
     public static string? FindHost()
     {
-        try { return DownloaderService.ResolveHostPath(); }
-        catch (FileNotFoundException) { return null; }
+        return HostLocator.TryResolve();
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
-﻿<Window x:Class="DownloaderAppWpf.MainWindow"
+<Window x:Class="DownloaderAppWpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -31,23 +31,16 @@
         <DataGrid x:Name="DownloadsGrid" Grid.Row="2" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" Margin="0,0,0,12">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
-                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="150"/>
-                <DataGridTextColumn Header="Progress" Binding="{Binding ProgressText}" Width="140"/>
-                <DataGridTextColumn Header="Offset" Binding="{Binding OffsetText}" Width="120"/>
-                <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="120"/>
+                <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="140"/>
+                <DataGridTextColumn Header="Progress" Binding="{Binding ProgressText}" Width="100"/>
+                <DataGridTextColumn Header="Downloaded" Binding="{Binding OffsetText}" Width="120"/>
+                <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="110"/>
+                <DataGridTextColumn Header="Tier" Binding="{Binding TierText}" Width="150"/>
             </DataGrid.Columns>
         </DataGrid>
 
-        <Grid Grid.Row="3">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
-                <ColumnDefinition Width="Auto"/>
-            </Grid.ColumnDefinitions>
-
-            <ProgressBar x:Name="OverallProgress" Grid.Column="0" Height="24" Minimum="0" Maximum="100" Value="0" Margin="0,0,10,0"/>
-            <Button Grid.Column="1" Content="Pause" Width="90" Margin="0,0,10,0" Click="Pause_Click"/>
-            <Button Grid.Column="2" Content="Resume" Width="90" Click="Resume_Click"/>
-        </Grid>
+        <!-- Per-row Pause/Cancel arrive in phase 2. The buttons that used to sit here only
+             relabelled a row and never contacted the host, so they are gone rather than lying. -->
+        <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="#555" Text="Ready"/>
     </Grid>
 </Window>

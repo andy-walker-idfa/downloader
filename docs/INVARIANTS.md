@@ -112,6 +112,12 @@ deletes the old one, leaving the registration pointing at nothing.
 **MSIX cannot deploy from exFAT.** Stage package layouts on NTFS. The same drive property makes
 git report "detected dubious ownership".
 
+**The app rewrites the host manifest on every launch, with only the current extension ID.**
+`NativeHostRegistrar` authorises exactly `NativeHostRegistrar.ExtensionId`. Running the app after
+changing the extension's ID therefore locks out any browser still loading the old one. Re-run
+`packaging/install.ps1 -ExtensionId <old id>` to authorise both during a transition, and keep
+that constant in step with `extension/manifest.json`.
+
 ## Working on this repo
 
 **Never blanket-kill `DownloaderHost` to unlock the binary.**

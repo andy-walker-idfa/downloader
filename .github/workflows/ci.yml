@@ -24,8 +24,11 @@ jobs:
       - name: Build
         run: dotnet build Downloader.sln --no-restore -c Release
 
-      - name: Test
+      - name: Test the native host
         run: dotnet test native-host/DownloaderHost.Tests/DownloaderHost.Tests.csproj --no-build -c Release --verbosity normal
+
+      - name: Test the desktop app's host connection
+        run: dotnet test app/DownloaderAppWpf.Tests/DownloaderAppWpf.Tests.csproj --no-build -c Release --verbosity normal
 
   extension:
     runs-on: ubuntu-latest
