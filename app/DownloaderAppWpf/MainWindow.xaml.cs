@@ -24,7 +24,6 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        Title += "  -  " + DescribeRegistration();
         DownloadsGrid.ItemsSource = _downloads;
         PartialsGrid.ItemsSource = _partials;
 
@@ -34,12 +33,13 @@ public partial class MainWindow : Window
             foreach (var item in _downloads.Where(d => d.IsActive))
             {
                 item.Status = "Error";
-                item.TierText = "host disconnected: " + reason;
+                item.Message = "host disconnected: " + reason;
             }
 
             UpdateStatus();
         });
 
+        ShowRegistrationProblem();
         UpdateStatus();
 
         Loaded += async (_, _) =>
@@ -141,13 +141,56 @@ public partial class MainWindow : Window
         }
     }
 
-    private static string DescribeRegistration()
+    /// <summary>
+    /// Registering the native host is what lets the browser extension work at all, so a failure
+    /// has to be visible. It used to be appended to the window title, where nobody would read it.
+    /// </summary>
+    private void ShowRegistrationProblem()
     {
         var r = App.Registration;
-        if (r is null) return "native host: registration not attempted";
-        if (r.Error is not null) return $"native host: FAILED - {r.Error}";
-        var where = r.Packaged ? "packaged" : "unpackaged";
-        return $"native host: registered for {string.Join(", ", r.Registered)} ({where})";
+
+        string? problem = r switch
+        {
+            null => "The native host was not registered, so the browser extension cannot reach it.",
+            { Error: not null } => "The native host could not be registered: " + r.Error,
+            { Registered.Count: 0 } => "No browser was registered, so the extension cannot reach the downloader.",
+            _ => null
+        };
+
+        if (problem is null)
+        {
+            RegistrationBanner.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        RegistrationBannerText.Text = problem;
+        RegistrationBanner.Visibility = Visibility.Visible;
+    }
+
+    /// <summary>
+    /// Closing the window disposes the connection, which closes the host's stdin and ends every
+    /// transfer it is running. Say so rather than losing a download silently -- on a
+    /// non-resumable source those bytes cannot be recovered.
+    /// </summary>
+    protected override void OnClosing(CancelEventArgs e)
+    {
+        var active = _downloads.Count(d => d.IsActive);
+        if (active > 0)
+        {
+            var answer = MessageBox.Show(
+                active == 1
+                    ? "A download is still running and will stop if you close." + "\n\n" + "Close anyway?"
+                    : $"{active} downloads are still running and will stop if you close." + "\n\n" + "Close anyway?",
+                "Downloads in progress", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+
+            if (answer != MessageBoxResult.OK)
+            {
+                e.Cancel = true;
+                return;
+            }
+        }
+
+        base.OnClosing(e);
     }
 
     /// <summary>Host replies arrive on a background thread; UI state changes must not.</summary>
@@ -184,7 +227,11 @@ public partial class MainWindow : Window
             // pause or cancel this specific transfer while it runs.
             var handle = App.Host.StartDownload(
                 arguments,
-                interim => OnUi(() => ApplyInterim(item, interim)));
+                interim => OnUi(() =>
+                {
+                    ApplyInterim(item, interim);
+                    UpdateStatus();
+                }));
 
             item.Handle = handle;
             var result = await handle.Completion;
@@ -207,7 +254,7 @@ public partial class MainWindow : Window
                         break;
                     case "error":
                         item.Status = "Error";
-                        item.TierText = result.Message ?? "failed";
+                        item.Message = result.Message ?? "failed";
                         break;
                     default:
                         item.Status = result.Status;
@@ -226,7 +273,7 @@ public partial class MainWindow : Window
             OnUi(() =>
             {
                 item.Status = "Error";
-                item.TierText = ex.Message;
+                item.Message = ex.Message;
                 item.IsStopping = false;
                 item.Handle = null;
                 UpdateStatus();
@@ -283,7 +330,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             item.IsStopping = false;
-            item.TierText = ex.Message;
+            item.Message = ex.Message;
         }
     }
 
@@ -299,6 +346,7 @@ public partial class MainWindow : Window
         if (failed > 0) parts.Add($"{failed} failed");
 
         StatusText.Text = parts.Count == 0 ? "Ready" : string.Join("  -  ", parts);
+        EmptyHint.Visibility = _downloads.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private async void ChooseFolder_Click(object sender, RoutedEventArgs e)
@@ -408,6 +456,7 @@ public class DownloadItem : INotifyPropertyChanged
     private string _offsetText = "0 B";
     private string _sizeText = "-";
     private string _tierText = "";
+    private string _message = "";
     private bool _resumable;
     private bool _isStopping;
 
@@ -420,7 +469,29 @@ public class DownloadItem : INotifyPropertyChanged
     public string ProgressText { get => _progressText; set => Set(ref _progressText, value); }
     public string OffsetText { get => _offsetText; set => Set(ref _offsetText, value); }
     public string SizeText { get => _sizeText; set => Set(ref _sizeText, value); }
-    public string TierText { get => _tierText; set => Set(ref _tierText, value); }
+    public string TierText
+    {
+        get => _tierText;
+        set { if (Set(ref _tierText, value)) Notify(nameof(TierHint)); }
+    }
+
+    /// <summary>
+    /// Errors and notes. Kept separate from TierText, which previously doubled as the error
+    /// field, so a failure was displayed to the user under the heading "Tier".
+    /// </summary>
+    public string Message { get => _message; set => Set(ref _message, value); }
+
+    /// <summary>The same explanation the browser extension gives for each tier.</summary>
+    public string TierHint => TierText switch
+    {
+        "FullyResumable" => "Range requests honoured with a strong ETag. Safe to resume.",
+        "ResumableUnverified" => "Range requests honoured but no strong validator. Resume works, but the server could swap the file underneath.",
+        "NotResumable" => "Server ignores Range requests. An interrupted download must restart from zero.",
+        "UnboundedStream" => "No Content-Length. The size is unknown and resume is impossible.",
+        _ => ""
+    };
+
+    public bool HasFailed => Status == "Error";
 
     public string Status
     {
@@ -459,6 +530,7 @@ public class DownloadItem : INotifyPropertyChanged
         Notify(nameof(IsActive));
         Notify(nameof(CanPause));
         Notify(nameof(CanCancel));
+        Notify(nameof(HasFailed));
     }
 
     private void Notify(string property) =>

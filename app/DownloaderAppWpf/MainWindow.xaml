@@ -18,7 +18,17 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <TextBlock Grid.Row="0" Text="Windows Downloader" FontSize="28" FontWeight="Bold" Margin="0,0,0,16"/>
+        <StackPanel Grid.Row="0" Margin="0,0,0,16">
+            <TextBlock Text="Windows Downloader" FontSize="28" FontWeight="Bold"/>
+
+            <!-- Registering the native host is what lets the browser extension reach the
+                 downloader, so a failure must be visible rather than hidden in the title bar. -->
+            <Border x:Name="RegistrationBanner" Visibility="Collapsed" Margin="0,10,0,0"
+                    Background="#FDECEA" BorderBrush="#E5A5A0" BorderThickness="1"
+                    CornerRadius="4" Padding="10,7">
+                <TextBlock x:Name="RegistrationBannerText" Foreground="#8C1D18" TextWrapping="Wrap"/>
+            </Border>
+        </StackPanel>
 
         <Grid Grid.Row="1" Margin="0,0,0,12">
             <Grid.ColumnDefinitions>
@@ -67,7 +77,27 @@
                 <DataGridTextColumn Header="Progress" Binding="{Binding ProgressText}" Width="100"/>
                 <DataGridTextColumn Header="Downloaded" Binding="{Binding OffsetText}" Width="120"/>
                 <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="110"/>
-                <DataGridTextColumn Header="Tier" Binding="{Binding TierText}" Width="150"/>
+                <DataGridTextColumn Header="Tier" Binding="{Binding TierText}" Width="150">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <!-- The same explanation the extension gives, on hover. -->
+                            <Setter Property="ToolTip" Value="{Binding TierHint}"/>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
+                <DataGridTextColumn Header="Details" Binding="{Binding Message}" Width="200">
+                    <DataGridTextColumn.ElementStyle>
+                        <Style TargetType="TextBlock">
+                            <Setter Property="ToolTip" Value="{Binding Message}"/>
+                            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding HasFailed}" Value="True">
+                                    <Setter Property="Foreground" Value="#C5221F"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </DataGridTextColumn.ElementStyle>
+                </DataGridTextColumn>
 
                 <DataGridTemplateColumn Header="" Width="150">
                     <DataGridTemplateColumn.CellTemplate>
@@ -89,6 +119,10 @@
                 </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
+
+        <TextBlock x:Name="EmptyHint" Grid.Row="3" Foreground="#888" FontSize="14"
+                   HorizontalAlignment="Center" VerticalAlignment="Center" TextAlignment="Center"
+                   Text="No downloads yet.&#10;Paste a link above, or use the browser extension."/>
 
         <Grid Grid.Row="4">
             <Grid.ColumnDefinitions>

@@ -150,13 +150,25 @@ out of the accept loop and silently stopped the server, so the *next* request hu
 The resume list is per-folder, because `list_partials` scans the download folder. Changing the
 folder therefore changes what can be resumed, and the app refreshes the list when it changes.
 
-### Phase 4 — Polish
+### Phase 4 — Polish — DONE, except the tray
 
-- [ ] Errors as UI state, not exception text in a grid cell
-- [ ] Empty states, disabled buttons while a request is in flight
-- [ ] Show tier per row with the same wording the extension uses
-- [ ] Tray icon and close-to-tray
-- [ ] Surface registration status when it fails (`App.Registration`)
+- [x] Errors have their own `Message` field and a **Details** column. They were being written
+      into `TierText`, so a failure was shown to the user under the heading "Tier"
+- [x] Empty state on the transfers grid
+- [x] Buttons disable while a stop is in flight (`IsStopping`, from phase 2)
+- [x] Tier tooltip carrying the same explanation the extension gives
+- [x] A registration failure shows as a banner. It used to be appended to the window title,
+      where nobody would read it -- and it is the one failure that stops the browser extension
+      working at all
+- [x] Closing with transfers running asks first. Closing disposes the connection, which closes
+      the host's stdin and ends every transfer it is running; on a non-resumable source those
+      bytes are gone
+
+**Tray icon and close-to-tray: deliberately not done.** Not because it is hard, but because it
+is not only a widget. WPF has no built-in tray icon, so it means WinForms interop or a third
+party package, and "close to tray" implies the app keeps running and keeps the host alive so
+downloads continue. That is a product decision about what closing the window means, and it
+interacts with the point above. Worth deciding explicitly rather than implying it with an icon.
 
 ## Deliberately out of scope
 
