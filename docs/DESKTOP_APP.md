@@ -126,16 +126,29 @@ A note for whoever extends the test server: handle each request on its own task 
 client aborting. Pause aborts a response mid-write, and handling requests inline meant that threw
 out of the accept loop and silently stopped the server, so the *next* request hung for ever.
 
-### Phase 3 — Unfinished list and settings
+### Phase 3 — Unfinished list and settings — DONE
 
-- [ ] Call `list_partials` on startup and after any transfer ends; show a Resume/Discard list
-- [ ] Resume sends `download` with the **same `path`** so it continues rather than restarting
-- [ ] Replace the folder field with `get_settings` / `set_settings`
-- [ ] Delete the `OpenFileDialog` folder hack; use a real folder picker
-  (`Microsoft.Win32.OpenFolderDialog`, .NET 8+)
+- [x] `list_partials` on startup, after any transfer ends, and after the folder changes
+- [x] An Unfinished panel with Resume/Discard, hidden when there is nothing to resume
+- [x] Resume sends `download` with the **same `path`**, which is what continues a transfer
+      rather than starting it again
+- [x] The button reads **Restart**, not Resume, on a non-resumable source, with the tier as the
+      tooltip. Calling it Resume there would be a lie
+- [x] Discard confirms first, then removes the partial and its metadata
+- [x] The folder comes from `get_settings` and is shown in the status bar; `set_settings` saves
+      it, shared with the extension. The `OpenFileDialog` hack was replaced with a real folder
+      picker in phase 1
 
-**Done when:** a download interrupted before an app restart is still listed and resumable, and
-the folder shown matches the extension popup's.
+| Test | Proves |
+|---|---|
+| `PausedDownload_IsListedByAFreshConnection` | a transfer interrupted in one session is listed by a brand-new host process, so it survives an app restart |
+| `RunningDownload_IsNotListedAsUnfinished` | a live transfer is not also shown as resumable |
+| `Discard_RemovesThePartialFromDiskAndTheList` | discard clears both files and the listing |
+| `DownloadFolder_RoundTripsAndIsUsed` | a download with no path lands in the configured folder |
+| `SetDownloadFolder_RejectsAPathThatCannotBeUsed` | a bad folder is refused up front, not mid-download |
+
+The resume list is per-folder, because `list_partials` scans the download folder. Changing the
+folder therefore changes what can be resumed, and the app refreshes the list when it changes.
 
 ### Phase 4 — Polish
 

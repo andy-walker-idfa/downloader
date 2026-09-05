@@ -304,4 +304,127 @@ public class HostConnectionTests : IDisposable
         Assert.Equal(2_000_000, new FileInfo(target).Length);
         Assert.False(File.Exists(target + ".part"), "the partial should be gone once complete");
     }
+    // --- phase 3: unfinished list and settings --------------------------------
+
+    private static List<System.Text.Json.JsonElement> ItemsOf(HostMessage reply)
+    {
+        var items = new List<System.Text.Json.JsonElement>();
+        if (reply.Raw.TryGetProperty("items", out var array))
+        {
+            items.AddRange(array.EnumerateArray());
+        }
+        return items;
+    }
+
+    /// <summary>
+    /// The acceptance criterion for phase 3: a transfer interrupted in one session is still
+    /// listed by a completely fresh connection, because the host reads it from disk.
+    /// </summary>
+    [Fact]
+    public async Task PausedDownload_IsListedByAFreshConnection()
+    {
+        using var server = new LocalFileServer(8818, 2_000_000, "survives.bin", chunkDelayMs: 60);
+        var target = Path.Combine(_folder, "survives.bin");
+        var flowing = new TaskCompletionSource();
+
+        var handle = _host.StartDownload(new { url = server.Url, path = target }, SignalOnProgress(flowing));
+        await flowing.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await handle.PauseAsync();
+        await handle.Completion.WaitAsync(TimeSpan.FromSeconds(20));
+
+        // A new connection means a new host process: nothing is carried in memory.
+        using var freshConnection = new HostConnection();
+        var reply = await freshConnection.SendAsync("list_partials", new { dir = _folder });
+
+        Assert.Equal("partials", reply.Status);
+        var items = ItemsOf(reply);
+        var listed = Assert.Single(items);
+        Assert.Equal("survives.bin", listed.GetProperty("fileName").GetString());
+        Assert.Equal(target, listed.GetProperty("path").GetString());
+        Assert.True(listed.GetProperty("resumable").GetBoolean());
+        Assert.InRange(listed.GetProperty("bytesOnDisk").GetInt64(), 1, 1_999_999);
+    }
+
+    /// <summary>A running transfer is not "unfinished"; listing it would show one download twice.</summary>
+    [Fact]
+    public async Task RunningDownload_IsNotListedAsUnfinished()
+    {
+        using var server = new LocalFileServer(8819, 2_000_000, "running.bin", chunkDelayMs: 60);
+        var target = Path.Combine(_folder, "running.bin");
+        var flowing = new TaskCompletionSource();
+
+        var handle = _host.StartDownload(new { url = server.Url, path = target }, SignalOnProgress(flowing));
+        await flowing.Task.WaitAsync(TimeSpan.FromSeconds(20));
+
+        var whileRunning = await _host.SendAsync("list_partials", new { dir = _folder });
+        Assert.Empty(ItemsOf(whileRunning));
+
+        await handle.PauseAsync();
+        await handle.Completion.WaitAsync(TimeSpan.FromSeconds(20));
+
+        var afterPause = await _host.SendAsync("list_partials", new { dir = _folder });
+        Assert.Single(ItemsOf(afterPause));
+    }
+
+    [Fact]
+    public async Task Discard_RemovesThePartialFromDiskAndTheList()
+    {
+        using var server = new LocalFileServer(8820, 2_000_000, "discard.bin", chunkDelayMs: 60);
+        var target = Path.Combine(_folder, "discard.bin");
+        var flowing = new TaskCompletionSource();
+
+        var handle = _host.StartDownload(new { url = server.Url, path = target }, SignalOnProgress(flowing));
+        await flowing.Task.WaitAsync(TimeSpan.FromSeconds(20));
+        await handle.PauseAsync();
+        await handle.Completion.WaitAsync(TimeSpan.FromSeconds(20));
+
+        Assert.Single(ItemsOf(await _host.SendAsync("list_partials", new { dir = _folder })));
+
+        var discarded = await _host.SendAsync("discard", new { path = target });
+        Assert.Equal("discarded", discarded.Status);
+
+        Assert.False(File.Exists(target + ".part"));
+        Assert.False(File.Exists(target + ".part.meta"));
+        Assert.Empty(ItemsOf(await _host.SendAsync("list_partials", new { dir = _folder })));
+    }
+
+    /// <summary>The folder the app shows must be the one the host actually saves into.</summary>
+    [Fact]
+    public async Task DownloadFolder_RoundTripsAndIsUsed()
+    {
+        var original = (await _host.SendAsync("get_settings")).Raw.GetProperty("downloadDir").GetString();
+        Assert.False(string.IsNullOrWhiteSpace(original));
+
+        try
+        {
+            var set = await _host.SendAsync("set_settings", new { downloadDir = _folder });
+            Assert.Equal("settings", set.Status);
+            Assert.Equal(_folder, set.Raw.GetProperty("downloadDir").GetString());
+
+            using var server = new LocalFileServer(8821, 50_000, "into-folder.bin");
+
+            // No path given: it must land in the configured folder.
+            var finished = await _host.SendAsync("download", new { url = server.Url })
+                .WaitAsync(TimeSpan.FromSeconds(30));
+
+            Assert.Equal("finished", finished.Status);
+            Assert.Equal(Path.Combine(_folder, "into-folder.bin"), finished.Path);
+        }
+        finally
+        {
+            await _host.SendAsync("set_settings", new { downloadDir = original });
+        }
+    }
+
+    [Fact]
+    public async Task SetDownloadFolder_RejectsAPathThatCannotBeUsed()
+    {
+        // A file where a folder should be: the host must refuse rather than fail mid-download.
+        var file = Path.Combine(_folder, "not-a-folder.txt");
+        await File.WriteAllTextAsync(file, "x");
+
+        var reply = await _host.SendAsync("set_settings", new { downloadDir = file });
+        Assert.Equal("error", reply.Status);
+        Assert.False(string.IsNullOrWhiteSpace(reply.Message));
+    }
 }

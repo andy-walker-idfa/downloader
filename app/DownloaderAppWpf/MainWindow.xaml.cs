@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Windows;
 using Microsoft.Win32;
 
@@ -14,11 +15,18 @@ public partial class MainWindow : Window
 {
     private readonly ObservableCollection<DownloadItem> _downloads = new();
 
+    /// <summary>
+    /// Downloads left unfinished by an earlier session. The host reads these from disk, so they
+    /// survive an app restart, a crash, and the browser closing.
+    /// </summary>
+    private readonly ObservableCollection<PartialItem> _partials = new();
+
     public MainWindow()
     {
         InitializeComponent();
         Title += "  -  " + DescribeRegistration();
         DownloadsGrid.ItemsSource = _downloads;
+        PartialsGrid.ItemsSource = _partials;
 
         // A dead host must be visible, not a UI that waits for ever.
         App.Host.Disconnected += reason => OnUi(() =>
@@ -33,6 +41,104 @@ public partial class MainWindow : Window
         });
 
         UpdateStatus();
+
+        Loaded += async (_, _) =>
+        {
+            await RefreshSettingsAsync();
+            await RefreshPartialsAsync();
+        };
+    }
+
+    // --- unfinished downloads and settings ------------------------------------
+
+    /// <summary>
+    /// Asks the host what can be resumed. It scans the download folder for .part files, so this
+    /// is the only source that survives the app being closed. Running transfers are excluded by
+    /// the host, so nothing appears twice.
+    /// </summary>
+    private async System.Threading.Tasks.Task RefreshPartialsAsync()
+    {
+        try
+        {
+            var reply = await App.Host.SendAsync("list_partials");
+            if (reply.Status != "partials") return;
+
+            var items = new List<PartialItem>();
+            if (reply.Raw.TryGetProperty("items", out var array) && array.ValueKind == JsonValueKind.Array)
+            {
+                foreach (var element in array.EnumerateArray())
+                {
+                    items.Add(PartialItem.FromJson(element));
+                }
+            }
+
+            OnUi(() =>
+            {
+                _partials.Clear();
+                foreach (var item in items) _partials.Add(item);
+                UnfinishedPanel.Visibility = _partials.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+            });
+        }
+        catch (Exception ex)
+        {
+            OnUi(() => StatusText.Text = "Could not list unfinished downloads: " + ex.Message);
+        }
+    }
+
+    private async System.Threading.Tasks.Task RefreshSettingsAsync()
+    {
+        try
+        {
+            var reply = await App.Host.SendAsync("get_settings");
+            if (reply.Status != "settings") return;
+
+            var folder = reply.Raw.TryGetProperty("downloadDir", out var d) ? d.GetString() : null;
+            if (folder is not null) OnUi(() => FolderText.Text = "Saving to " + folder);
+        }
+        catch
+        {
+            // Not fatal: the host reports where each file landed anyway.
+        }
+    }
+
+    private async void ResumeRow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not PartialItem partial) return;
+
+        _partials.Remove(partial);
+        UnfinishedPanel.Visibility = _partials.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+
+        var item = new DownloadItem { Name = partial.FileName, Status = "Starting", Url = partial.Url };
+        _downloads.Insert(0, item);
+        UpdateStatus();
+
+        // The same path is what makes this a resume rather than a fresh download: the host reads
+        // the existing .part and continues from its length.
+        await RunDownloadAsync(item, new { url = partial.Url, path = partial.Path });
+    }
+
+    private async void DiscardRow_Click(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.DataContext is not PartialItem partial) return;
+
+        var confirm = MessageBox.Show(
+            $"Delete the partly downloaded {partial.FileName} ({partial.DownloadedText})?",
+            "Discard download", MessageBoxButton.OKCancel, MessageBoxImage.Warning);
+        if (confirm != MessageBoxResult.OK) return;
+
+        try
+        {
+            await App.Host.SendAsync("discard", new { path = partial.Path });
+            OnUi(() =>
+            {
+                _partials.Remove(partial);
+                UnfinishedPanel.Visibility = _partials.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+            });
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(ex.Message, "Discard download", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 
     private static string DescribeRegistration()
@@ -67,17 +173,17 @@ public partial class MainWindow : Window
 
         // Deliberately not awaited: awaiting here is what limited the app to one download at a
         // time. Each transfer owns its own task and reports through the item.
-        _ = RunDownloadAsync(item, url);
+        _ = RunDownloadAsync(item, new { url });
     }
 
-    private async System.Threading.Tasks.Task RunDownloadAsync(DownloadItem item, string url)
+    private async System.Threading.Tasks.Task RunDownloadAsync(DownloadItem item, object arguments)
     {
         try
         {
             // StartDownload hands back the id immediately, which is what makes it possible to
             // pause or cancel this specific transfer while it runs.
             var handle = App.Host.StartDownload(
-                new { url },
+                arguments,
                 interim => OnUi(() => ApplyInterim(item, interim)));
 
             item.Handle = handle;
@@ -112,6 +218,8 @@ public partial class MainWindow : Window
                 item.Handle = null;
                 UpdateStatus();
             });
+
+            await RefreshPartialsAsync();
         }
         catch (Exception ex)
         {
@@ -210,7 +318,10 @@ public partial class MainWindow : Window
                 return;
             }
 
-            StatusText.Text = "Saving downloads to " + dialog.FolderName;
+            FolderText.Text = "Saving to " + dialog.FolderName;
+
+            // list_partials scans the download folder, so changing it changes what can be resumed.
+            await RefreshPartialsAsync();
         }
         catch (Exception ex)
         {
@@ -230,6 +341,58 @@ public partial class MainWindow : Window
         {
             return "(resolving...)";
         }
+    }
+}
+
+/// <summary>
+/// A download left unfinished on disk, as reported by the host's list_partials.
+/// </summary>
+public class PartialItem
+{
+    public string FileName { get; init; } = "";
+    public string Path { get; init; } = "";
+    public string Url { get; init; } = "";
+    public long BytesOnDisk { get; init; }
+    public long? ContentLength { get; init; }
+    public string Tier { get; init; } = "";
+    public bool Resumable { get; init; }
+
+    public string DownloadedText => DownloadItem.FormatBytes(BytesOnDisk);
+
+    public string SizeText => ContentLength is > 0
+        ? DownloadItem.FormatBytes(ContentLength.Value)
+        : "unknown";
+
+    /// <summary>
+    /// Named honestly: a non-resumable source cannot continue, so pressing this starts again
+    /// from zero. Calling it "Resume" there would be a lie.
+    /// </summary>
+    public string ActionText => Resumable ? "Resume" : "Restart";
+
+    public string ActionHint => Resumable
+        ? "Continues from " + DownloadedText
+        : Tier + ": this server cannot resume, so it starts over";
+
+    public static PartialItem FromJson(JsonElement element)
+    {
+        string? Text(string name) =>
+            element.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+
+        long? Number(string name) =>
+            element.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var n)
+                ? n
+                : null;
+
+        return new PartialItem
+        {
+            FileName = Text("fileName") ?? "(unknown)",
+            Path = Text("path") ?? "",
+            Url = Text("url") ?? "",
+            Tier = Text("tier") ?? "",
+            BytesOnDisk = Number("bytesOnDisk") ?? 0,
+            ContentLength = Number("contentLength"),
+            Resumable = element.TryGetProperty("resumable", out var r) && r.ValueKind == JsonValueKind.True
+        };
     }
 }
 

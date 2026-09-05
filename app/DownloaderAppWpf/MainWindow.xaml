@@ -13,6 +13,7 @@
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
@@ -31,7 +32,35 @@
             <Button Grid.Column="2" Content="Choose Folder" Width="120" Height="36" Click="ChooseFolder_Click"/>
         </Grid>
 
-        <DataGrid x:Name="DownloadsGrid" Grid.Row="2" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" Margin="0,0,0,12">
+        <!-- Read from disk by the host, so it survives an app restart or a crash. Hidden when
+             there is nothing to resume. -->
+        <StackPanel x:Name="UnfinishedPanel" Grid.Row="2" Margin="0,0,0,14" Visibility="Collapsed">
+            <TextBlock Text="Unfinished downloads" FontWeight="SemiBold" Margin="0,0,0,6"/>
+            <DataGrid x:Name="PartialsGrid" ItemsSource="{Binding}" AutoGenerateColumns="False"
+                      CanUserAddRows="False" IsReadOnly="True" HeadersVisibility="Column"
+                      MaxHeight="150" SelectionMode="Single">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Name" Binding="{Binding FileName}" Width="*"/>
+                    <DataGridTextColumn Header="Downloaded" Binding="{Binding DownloadedText}" Width="120"/>
+                    <DataGridTextColumn Header="Size" Binding="{Binding SizeText}" Width="110"/>
+                    <DataGridTextColumn Header="Tier" Binding="{Binding Tier}" Width="150"/>
+                    <DataGridTemplateColumn Header="" Width="170">
+                        <DataGridTemplateColumn.CellTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal">
+                                    <Button Content="{Binding ActionText}" ToolTip="{Binding ActionHint}"
+                                            Padding="10,2" Margin="0,0,6,0" Click="ResumeRow_Click"/>
+                                    <Button Content="Discard" Padding="10,2" Click="DiscardRow_Click"
+                                            ToolTip="Delete the partial file and its resume data"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </DataGridTemplateColumn.CellTemplate>
+                    </DataGridTemplateColumn>
+                </DataGrid.Columns>
+            </DataGrid>
+        </StackPanel>
+
+        <DataGrid x:Name="DownloadsGrid" Grid.Row="3" AutoGenerateColumns="False" CanUserAddRows="False" IsReadOnly="True" HeadersVisibility="Column" SelectionMode="Single" Margin="0,0,0,12">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Name" Binding="{Binding Name}" Width="*"/>
                 <DataGridTextColumn Header="Status" Binding="{Binding Status}" Width="140"/>
@@ -61,6 +90,14 @@
             </DataGrid.Columns>
         </DataGrid>
 
-        <TextBlock x:Name="StatusText" Grid.Row="3" Foreground="#555" Text="Ready"/>
+        <Grid Grid.Row="4">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="StatusText" Grid.Column="0" Foreground="#555" Text="Ready"/>
+            <TextBlock x:Name="FolderText" Grid.Column="1" Foreground="#777" HorizontalAlignment="Right"
+                       TextTrimming="CharacterEllipsis" Text=""/>
+        </Grid>
     </Grid>
 </Window>
