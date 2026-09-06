@@ -1,12 +1,33 @@
 # Windows Downloader
 
+> ## Archived, September 2026
+>
+> **Not maintained, and not intended to be used.** Every major browser now ships a download
+> manager that covers what this set out to do: downloads that pause and resume wherever the
+> server allows it. A separate tool is not worth installing for that, so development stopped
+> here rather than continuing to a Store submission.
+>
+> The code is complete and working at the point it was stopped, and the local installation has
+> been removed from the machine it was developed on. Reviving it means running
+> `packaging/install.ps1` again on a fresh checkout.
+>
+> **If you are reading this for anything, read [docs/INVARIANTS.md](docs/INVARIANTS.md).** It is
+> the part with lasting value: roughly thirty rules about Chromium native messaging, HTTP range
+> semantics and MSIX packaging, each recording a real failure and why it happened. Most of those
+> failures were silent.
+>
+> The one idea here that browsers still do not do is tell you *before* a download starts whether
+> the server can actually resume it. See [docs/TIER_DETECTION.md](docs/TIER_DETECTION.md).
+
+
 A download manager for Windows that detects whether a server actually supports resuming, and
 handles each source accordingly. It comes in three parts: a browser extension, a native
 messaging host that does the downloading, and a WPF desktop app.
 
-> **v1.0.0.** The browser extension and native host are complete, tested end to end, and what
-> the version number refers to. The desktop app and MSIX/Store packaging are still early — see
-> [ROADMAP.md](ROADMAP.md) for what is and isn't done.
+> **v1.0.0** was the last release. The browser extension and native host were complete and
+> tested end to end; the desktop app reached feature parity with the extension popup across four
+> phases (see [docs/DESKTOP_APP.md](docs/DESKTOP_APP.md)). MSIX packaging was proven but never
+> submitted.
 
 ## Why
 

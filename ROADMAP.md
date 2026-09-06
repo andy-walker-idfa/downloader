@@ -1,5 +1,11 @@
 # Roadmap
 
+> **Archived September 2026 — none of the remaining items will be done.** Development stopped
+> because browsers already provide download management with pause and resume, so a separate tool
+> is not worth installing. What follows is kept as a record of where the work had reached and
+> what was left, in case anyone revives it.
+
+
 The goal is a real Windows application distributed through the Microsoft Store. This records
 what works, what's missing, and what has to be true before a Store submission.
 
